@@ -2,11 +2,10 @@
  * Grant Appointment Scheduling — Configuration
  */
 const CFG = {
-  SHEET_ID: '1SR6APQ0HotEIBp9Qi4naYHvVsmCEQr0g12hI4Ed1zOs',
-  GID: 1652297798,
-  SHEET_NAME: 'Appointments', // Change if needed
+  SHEET_ID: '110OZsGAWmndDo07REdKQIrdR92XDBLwKgMvtfZ1oboU',
+  GID: 0,
+  SHEET_NAME: 'Appointments', // adjust if the sheet name differs
 
-  // Core columns (exact header names in your sheet)
   COLS: {
     TYPE: 'Appointment Type',
     STATUS: 'Appointment Status',
