@@ -10,10 +10,6 @@ function doGet() {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-/**
- * Utility: Include HTML partials (CSS, JS, etc.)
- * Enables <?!= include('ui/css.app.html'); ?> in HTML files.
- */
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
