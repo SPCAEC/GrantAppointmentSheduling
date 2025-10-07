@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <?!= include('ui/css.app.html'); ?>
+    <?!= include('ui/js.app.html'); ?>
+  </head>
+  <body>
+    <div class="app">
+      <header id="appHeader" class="header hidden">
+        <button id="backBtn" class="btn secondary">&larr; Back</button>
+        <h1 id="sectionTitle">Grant Appointment Scheduling</h1>
+      </header>
+
+      <!-- ─── MAIN MENU ──────────────────────────────── -->
+      <section id="mainMenu" class="menu-grid">
+        <h1 class="app-title">Grant Appointment Scheduling</h1>
+        <div class="tiles">
+          <button class="tile" data-view="schedule">
+            <div class="icon">📅</div>
+            <div class="label">Schedule New Appointment</div>
+          </button>
+          <button class="tile" data-view="modify">
+            <div class="icon">✏️</div>
+            <div class="label">Modify Existing Appointment</div>
+          </button>
+          <button class="tile" data-view="cancel">
+            <div class="icon">❌</div>
+            <div class="label">Cancel Appointment</div>
+          </button>
+          <button class="tile" data-view="outcome">
+            <div class="icon">🩺</div>
+            <div class="label">Log Appointment Outcome</div>
+          </button>
+        </div>
+      </section>
+
+      <!-- ─── SUB-VIEWS ──────────────────────────────── -->
+      <section id="view-schedule" class="sub-view hidden"></section>
+      <section id="view-modify" class="sub-view hidden"><p>Modify flow coming soon.</p></section>
+      <section id="view-cancel" class="sub-view hidden"><p>Cancel flow coming soon.</p></section>
+      <section id="view-outcome" class="sub-view hidden"><p>Outcome flow coming soon.</p></section>
+    </div>
+  </body>
+</html>

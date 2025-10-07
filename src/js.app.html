@@ -1,0 +1,183 @@
+<script>
+(() => {
+  const $ = sel => document.querySelector(sel);
+  const $$ = sel => [...document.querySelectorAll(sel)];
+  const header = $('#appHeader');
+  const sectionTitle = $('#sectionTitle');
+  const backBtn = $('#backBtn');
+  const mainMenu = $('#mainMenu');
+  const views = $$('.sub-view');
+
+  // ─── Navigation ─────────────────────────────
+  $$('.tile').forEach(btn => {
+    btn.addEventListener('click', () => openView(btn.dataset.view));
+  });
+
+  backBtn.addEventListener('click', () => {
+    header.classList.add('hidden');
+    sectionTitle.textContent = '';
+    views.forEach(v => v.classList.add('hidden'));
+    mainMenu.classList.remove('hidden');
+  });
+
+  function openView(view) {
+    mainMenu.classList.add('hidden');
+    header.classList.remove('hidden');
+    sectionTitle.textContent = viewTitle(view);
+    views.forEach(v => v.classList.add('hidden'));
+    const target = $(`#view-${view}`);
+    target.classList.remove('hidden');
+    if (view === 'schedule') renderScheduleFlow(target);
+  }
+
+  function viewTitle(view) {
+    return {
+      schedule: 'Schedule New Appointment',
+      modify: 'Modify Existing Appointment',
+      cancel: 'Cancel Appointment',
+      outcome: 'Log Appointment Outcome'
+    }[view] || '';
+  }
+
+  // ─── Schedule Flow ──────────────────────────
+  function renderScheduleFlow(container) {
+    container.innerHTML = `
+      <div id="scheduleStep1" class="schedule-step">
+        <h2>What type of appointment?</h2>
+        <div class="option-buttons">
+          <button class="btn" data-type="Surgery">Surgery</button>
+          <button class="btn" data-type="Wellness">Wellness</button>
+        </div>
+      </div>
+      <div id="scheduleSlots" class="schedule-step hidden">
+        <h2>Select an Available Appointment</h2>
+        <div id="slotGrid" class="card-grid"></div>
+        <div class="actions">
+          <button id="showMoreBtn" class="btn secondary">Show 6 More</button>
+        </div>
+      </div>
+      <div id="scheduleForm" class="schedule-step hidden">
+        <h2>Client & Pet Information</h2>
+        <div id="formFields"></div>
+        <div class="actions">
+          <button id="continueBtn" class="btn">Continue</button>
+        </div>
+      </div>
+      <div id="scheduleConfirm" class="schedule-step hidden">
+        <div class="spinner"></div>
+      </div>
+    `;
+
+    const step1Btns = container.querySelectorAll('#scheduleStep1 .btn');
+    step1Btns.forEach(b => b.addEventListener('click', () => selectType(b.dataset.type)));
+
+    const slotGrid = container.querySelector('#slotGrid');
+    const showMoreBtn = container.querySelector('#showMoreBtn');
+    const continueBtn = container.querySelector('#continueBtn');
+
+    let selectedType = null;
+    let slotsShown = 6;
+
+    function selectType(type) {
+      selectedType = type;
+      $('#scheduleStep1').classList.add('hidden');
+      $('#scheduleSlots').classList.remove('hidden');
+      loadSlots();
+    }
+
+    function loadSlots() {
+      slotGrid.innerHTML = `<div class="spinner"></div>`;
+      // For now, mock data (will come from backend later)
+      setTimeout(() => {
+        slotGrid.innerHTML = '';
+        for (let i = 0; i < slotsShown; i++) {
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.innerHTML = `
+            <div><strong>${selectedType}</strong></div>
+            <div>Mon Oct ${13+i}</div>
+            <div>10:00 AM</div>
+            <div>Grant: Pet Wellness 2025</div>
+          `;
+          card.addEventListener('click', () => openForm());
+          slotGrid.appendChild(card);
+        }
+      }, 600);
+    }
+
+    showMoreBtn.addEventListener('click', () => {
+      slotsShown += 6;
+      loadSlots();
+    });
+
+    function openForm() {
+      $('#scheduleSlots').classList.add('hidden');
+      $('#scheduleForm').classList.remove('hidden');
+      renderFormFields();
+    }
+
+    function renderFormFields() {
+      const formFields = $('#formFields');
+      formFields.innerHTML = `
+        <div class="field"><label>First Name</label><input type="text" id="firstName"></div>
+        <div class="field"><label>Last Name</label><input type="text" id="lastName"></div>
+        <div class="field"><label>Email</label><input type="email" id="email"></div>
+        <div class="field"><label>Phone</label><input type="tel" id="phone"></div>
+        <div class="field"><label>Pet Name</label><input type="text" id="petName"></div>
+        <div class="field"><label>Species</label>
+          <select id="species">
+            <option value="">— Select —</option>
+            <option value="Canine">Canine</option>
+            <option value="Feline">Feline</option>
+          </select>
+        </div>
+      `;
+    }
+
+    continueBtn.addEventListener('click', () => showTransportModal());
+  }
+
+  // ─── Modal ─────────────────────────────
+  function showTransportModal() {
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal-content">
+        <p>Does this client require transportation assistance for this appointment?</p>
+        <div class="actions">
+          <button class="btn" data-answer="Yes">Yes</button>
+          <button class="btn secondary" data-answer="No">No</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.querySelectorAll('button').forEach(btn =>
+      btn.addEventListener('click', () => {
+        modal.remove();
+        showConfirmation();
+      })
+    );
+  }
+
+  function showConfirmation() {
+    const confirm = $('#scheduleConfirm');
+    $$('#scheduleForm, #scheduleSlots, #scheduleStep1').forEach(s => s.classList.add('hidden'));
+    confirm.classList.remove('hidden');
+    setTimeout(() => {
+      confirm.innerHTML = `
+        <h2>Appointment Booked!</h2>
+        <div class="actions">
+          <button id="bookAnotherBtn" class="btn">Book another for this client</button>
+          <button id="doneBtn" class="btn secondary">Done</button>
+        </div>
+      `;
+      $('#bookAnotherBtn').addEventListener('click', () => {
+        confirm.classList.add('hidden');
+        renderScheduleFlow($('#view-schedule'));
+      });
+      $('#doneBtn').addEventListener('click', () => backBtn.click());
+    }, 1000);
+  }
+
+})();
+</script>
