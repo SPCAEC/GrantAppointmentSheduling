@@ -1,14 +1,17 @@
 <script>
-(() => {
-  const $ = sel => document.querySelector(sel);
+document.addEventListener('DOMContentLoaded', () => {
+  const $  = sel => document.querySelector(sel);
   const $$ = sel => [...document.querySelectorAll(sel)];
-  const header = $('#appHeader');
-  const sectionTitle = $('#sectionTitle');
-  const backBtn = $('#backBtn');
-  const mainMenu = $('#mainMenu');
-  const views = $$('.sub-view');
 
-  // ─── Navigation ─────────────────────────────
+  const header        = $('#appHeader');
+  const sectionTitle  = $('#sectionTitle');
+  const backBtn       = $('#backBtn');
+  const mainMenu      = $('#mainMenu');
+  const views         = $$('.sub-view');
+
+  // ───────────────────────────────────────────────
+  // Navigation between main tiles and sub-views
+  // ───────────────────────────────────────────────
   $$('.tile').forEach(btn => {
     btn.addEventListener('click', () => openView(btn.dataset.view));
   });
@@ -18,6 +21,7 @@
     sectionTitle.textContent = '';
     views.forEach(v => v.classList.add('hidden'));
     mainMenu.classList.remove('hidden');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
   function openView(view) {
@@ -27,102 +31,133 @@
     views.forEach(v => v.classList.add('hidden'));
     const target = $(`#view-${view}`);
     target.classList.remove('hidden');
+
     if (view === 'schedule') renderScheduleFlow(target);
   }
 
   function viewTitle(view) {
     return {
       schedule: 'Schedule New Appointment',
-      modify: 'Modify Existing Appointment',
-      cancel: 'Cancel Appointment',
-      outcome: 'Log Appointment Outcome'
+      modify:   'Modify Existing Appointment',
+      cancel:   'Cancel Appointment',
+      outcome:  'Log Appointment Outcome'
     }[view] || '';
   }
 
-  // ─── Schedule Flow ──────────────────────────
+  // ───────────────────────────────────────────────
+  // Schedule Flow  (now live with backend)
+  // ───────────────────────────────────────────────
   function renderScheduleFlow(container) {
     container.innerHTML = `
-      <div id="scheduleStep1" class="schedule-step">
+      <div id="step-type" class="schedule-step">
         <h2>What type of appointment?</h2>
         <div class="option-buttons">
           <button class="btn" data-type="Surgery">Surgery</button>
           <button class="btn" data-type="Wellness">Wellness</button>
         </div>
       </div>
-      <div id="scheduleSlots" class="schedule-step hidden">
+
+      <div id="step-slots" class="schedule-step hidden">
         <h2>Select an Available Appointment</h2>
         <div id="slotGrid" class="card-grid"></div>
         <div class="actions">
           <button id="showMoreBtn" class="btn secondary">Show 6 More</button>
         </div>
       </div>
-      <div id="scheduleForm" class="schedule-step hidden">
+
+      <div id="step-form" class="schedule-step hidden">
         <h2>Client & Pet Information</h2>
         <div id="formFields"></div>
         <div class="actions">
           <button id="continueBtn" class="btn">Continue</button>
         </div>
       </div>
-      <div id="scheduleConfirm" class="schedule-step hidden">
+
+      <div id="step-confirm" class="schedule-step hidden">
         <div class="spinner"></div>
       </div>
     `;
 
-    const step1Btns = container.querySelectorAll('#scheduleStep1 .btn');
-    step1Btns.forEach(b => b.addEventListener('click', () => selectType(b.dataset.type)));
-
-    const slotGrid = container.querySelector('#slotGrid');
-    const showMoreBtn = container.querySelector('#showMoreBtn');
-    const continueBtn = container.querySelector('#continueBtn');
+    const stepType   = $('#step-type');
+    const stepSlots  = $('#step-slots');
+    const stepForm   = $('#step-form');
+    const stepConfirm= $('#step-confirm');
+    const slotGrid   = $('#slotGrid');
+    const showMoreBtn= $('#showMoreBtn');
+    const continueBtn= $('#continueBtn');
 
     let selectedType = null;
-    let slotsShown = 6;
+    let slotsShown   = 6;
+    let selectedSlot = null;
 
-    function selectType(type) {
-      selectedType = type;
-      $('#scheduleStep1').classList.add('hidden');
-      $('#scheduleSlots').classList.remove('hidden');
-      loadSlots();
+    // Step 1 → Step 2
+    stepType.querySelectorAll('button[data-type]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        selectedType = btn.dataset.type;
+        stepType.classList.add('hidden');
+        stepSlots.classList.remove('hidden');
+        fetchSlots();
+        scrollTop();
+      });
+    });
+
+    // ─── Load available slots from backend ──────────────
+    function fetchSlots() {
+      slotGrid.innerHTML = `<div class="spinner"></div>`;
+      google.script.run
+        .withSuccessHandler(res => {
+          if (!res.ok) {
+            slotGrid.innerHTML = `<p class="error">Error loading slots: ${res.error}</p>`;
+            return;
+          }
+          renderSlots(res.slots);
+        })
+        .withFailureHandler(err => {
+          slotGrid.innerHTML = `<p class="error">Server error loading slots</p>`;
+          console.error(err);
+        })
+        .apiGetAvailableSlots(selectedType, slotsShown);
     }
 
-    function loadSlots() {
-      slotGrid.innerHTML = `<div class="spinner"></div>`;
-      // For now, mock data (will come from backend later)
-      setTimeout(() => {
-        slotGrid.innerHTML = '';
-        for (let i = 0; i < slotsShown; i++) {
-          const card = document.createElement('div');
-          card.className = 'card';
-          card.innerHTML = `
-            <div><strong>${selectedType}</strong></div>
-            <div>Mon Oct ${13+i}</div>
-            <div>10:00 AM</div>
-            <div>Grant: Pet Wellness 2025</div>
-          `;
-          card.addEventListener('click', () => openForm());
-          slotGrid.appendChild(card);
-        }
-      }, 600);
+    function renderSlots(slots) {
+      slotGrid.innerHTML = '';
+      if (!slots.length) {
+        slotGrid.innerHTML = `<p>No available appointments found.</p>`;
+        return;
+      }
+      slots.forEach(slot => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <div><strong>${selectedType}</strong></div>
+          <div>${slot.day} ${slot.date}</div>
+          <div>${slot.time}</div>
+          <div>Grant: ${slot.grant || '—'}</div>
+        `;
+        card.addEventListener('click', () => {
+          selectedSlot = slot;
+          stepSlots.classList.add('hidden');
+          stepForm.classList.remove('hidden');
+          renderFormFields();
+          scrollTop();
+        });
+        slotGrid.appendChild(card);
+      });
     }
 
     showMoreBtn.addEventListener('click', () => {
       slotsShown += 6;
-      loadSlots();
+      fetchSlots();
     });
 
-    function openForm() {
-      $('#scheduleSlots').classList.add('hidden');
-      $('#scheduleForm').classList.remove('hidden');
-      renderFormFields();
-    }
-
+    // ─── Step 3: Client & Pet Form ──────────────
     function renderFormFields() {
-      const formFields = $('#formFields');
-      formFields.innerHTML = `
+      const f = $('#formFields');
+      f.innerHTML = `
         <div class="field"><label>First Name</label><input type="text" id="firstName"></div>
         <div class="field"><label>Last Name</label><input type="text" id="lastName"></div>
         <div class="field"><label>Email</label><input type="email" id="email"></div>
-        <div class="field"><label>Phone</label><input type="tel" id="phone"></div>
+        <div class="field"><label>Phone</label><input type="tel" id="phone" placeholder="(###) ###-####"></div>
         <div class="field"><label>Pet Name</label><input type="text" id="petName"></div>
         <div class="field"><label>Species</label>
           <select id="species">
@@ -134,37 +169,71 @@
       `;
     }
 
-    continueBtn.addEventListener('click', () => showTransportModal());
-  }
+    // ─── Step 4: Continue → Book appointment ──────────────
+    continueBtn.addEventListener('click', showTransportModal);
 
-  // ─── Modal ─────────────────────────────
-  function showTransportModal() {
-    const modal = document.createElement('div');
-    modal.className = 'modal';
-    modal.innerHTML = `
-      <div class="modal-content">
-        <p>Does this client require transportation assistance for this appointment?</p>
-        <div class="actions">
-          <button class="btn" data-answer="Yes">Yes</button>
-          <button class="btn secondary" data-answer="No">No</button>
+    function scrollTop() {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ───────────────────────────────────────────────
+    // Modal → Confirmation
+    // ───────────────────────────────────────────────
+    function showTransportModal() {
+      const modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.innerHTML = `
+        <div class="modal-content">
+          <p>Does this client require transportation assistance for this appointment?</p>
+          <div class="actions">
+            <button class="btn" data-answer="Yes">Yes</button>
+            <button class="btn secondary" data-answer="No">No</button>
+          </div>
         </div>
-      </div>
-    `;
-    document.body.appendChild(modal);
-    modal.querySelectorAll('button').forEach(btn =>
-      btn.addEventListener('click', () => {
-        modal.remove();
-        showConfirmation();
-      })
-    );
-  }
+      `;
+      document.body.appendChild(modal);
 
-  function showConfirmation() {
-    const confirm = $('#scheduleConfirm');
-    $$('#scheduleForm, #scheduleSlots, #scheduleStep1').forEach(s => s.classList.add('hidden'));
-    confirm.classList.remove('hidden');
-    setTimeout(() => {
-      confirm.innerHTML = `
+      modal.querySelectorAll('button').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const transport = btn.dataset.answer;
+          modal.remove();
+          bookAppointment(transport);
+        });
+      });
+    }
+
+    // ─── Call backend to book appointment ──────────────
+    function bookAppointment(transport) {
+      stepForm.classList.add('hidden');
+      stepConfirm.classList.remove('hidden');
+
+      const payload = {
+        'First Name': $('#firstName').value.trim(),
+        'Last Name': $('#lastName').value.trim(),
+        'Email': $('#email').value.trim(),
+        'Phone': $('#phone').value.trim(),
+        'Pet Name': $('#petName').value.trim(),
+        'Species': $('#species').value,
+        'Transportation Required': transport
+      };
+
+      google.script.run
+        .withSuccessHandler(res => {
+          if (!res.ok) {
+            stepConfirm.innerHTML = `<p class="error">Booking failed: ${res.error}</p>`;
+            return;
+          }
+          showConfirmation();
+        })
+        .withFailureHandler(err => {
+          stepConfirm.innerHTML = `<p class="error">Server error booking appointment</p>`;
+          console.error(err);
+        })
+        .apiBookAppointment(payload, selectedType, selectedSlot.date, selectedSlot.time);
+    }
+
+    function showConfirmation() {
+      stepConfirm.innerHTML = `
         <h2>Appointment Booked!</h2>
         <div class="actions">
           <button id="bookAnotherBtn" class="btn">Book another for this client</button>
@@ -172,12 +241,13 @@
         </div>
       `;
       $('#bookAnotherBtn').addEventListener('click', () => {
-        confirm.classList.add('hidden');
-        renderScheduleFlow($('#view-schedule'));
+        const target = $('#view-schedule');
+        target.innerHTML = '';
+        renderScheduleFlow(target);
+        scrollTop();
       });
       $('#doneBtn').addEventListener('click', () => backBtn.click());
-    }, 1000);
+    }
   }
-
-})();
+});
 </script>
