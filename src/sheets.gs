@@ -15,12 +15,19 @@ function getSheet_() {
 function readAllAppointments_() {
   const sh = getSheet_();
   const data = sh.getDataRange().getValues();
+  if (!data || data.length < 2) throw new Error('No data found in sheet.');
+
   const headers = data.shift();
-  return data.map(r => {
+  if (!headers || headers.length === 0) throw new Error('No headers found in sheet.');
+
+  const objects = data.map(r => {
     const obj = {};
-    headers.forEach((h, i) => obj[h] = r[i]);
+    headers.forEach((h, i) => (obj[h] = r[i]));
     return obj;
   });
+
+  Logger.log(`readAllAppointments_: Loaded ${objects.length} rows`);
+  return objects;
 }
 
 /**
@@ -29,15 +36,17 @@ function readAllAppointments_() {
  * @param {number} limit - number of results
  */
 function getAvailableSlots_(type, limit) {
+  Logger.log(`getAvailableSlots_: Searching for type=${type}, limit=${limit}`);
   const all = readAllAppointments_();
   const avail = all.filter(r =>
     String(r[CFG.COLS.TYPE]).toLowerCase() === String(type).toLowerCase() &&
     String(r[CFG.COLS.STATUS]).toLowerCase() === 'available'
   );
 
-  // Sort by date/time and return first N
-  avail.sort((a,b) => new Date(a[CFG.COLS.DATE]) - new Date(b[CFG.COLS.DATE]));
-  return avail.slice(0, limit);
+  avail.sort((a, b) => new Date(a[CFG.COLS.DATE]) - new Date(b[CFG.COLS.DATE]));
+  const sliced = avail.slice(0, limit);
+  Logger.log(`getAvailableSlots_: Returning ${sliced.length} available slots`);
+  return sliced;
 }
 
 /**
@@ -47,11 +56,13 @@ function getAvailableSlots_(type, limit) {
  */
 function updateAppointmentRow_(rowIndex, data) {
   const sh = getSheet_();
-  const headers = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
-  const row = [];
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  const existingRow = sh.getRange(rowIndex, 1, 1, headers.length).getValues()[0];
 
-  headers.forEach((h,i) => {
-    row[i] = data[h] !== undefined ? data[h] : sh.getRange(rowIndex, i+1).getValue();
+  headers.forEach((h, i) => {
+    if (data[h] !== undefined) existingRow[i] = data[h];
   });
-  sh.getRange(rowIndex,1,1,row.length).setValues([row]);
+
+  sh.getRange(rowIndex, 1, 1, headers.length).setValues([existingRow]);
+  Logger.log(`updateAppointmentRow_: Updated row ${rowIndex}`);
 }

@@ -10,16 +10,27 @@
  */
 function apiGetAvailableSlots(type, limit) {
   try {
+    Logger.log(`apiGetAvailableSlots() called | type=${type} | limit=${limit}`);
     limit = limit || 6;
-    const slots = getAvailableSlots_(type, limit).map(r => ({
-      day: r[CFG.COLS.DAY],
-      date: r[CFG.COLS.DATE],
-      time: `${r[CFG.COLS.TIME]} ${r[CFG.COLS.AMPM]}`,
-      grant: r[CFG.COLS.GRANT]
+
+    if (!CFG || !CFG.SHEET_ID) throw new Error('Configuration (CFG) not found.');
+
+    const slotsRaw = getAvailableSlots_(type, limit);
+    if (!slotsRaw || !Array.isArray(slotsRaw)) throw new Error('No slot data returned from getAvailableSlots_()');
+
+    const slots = slotsRaw.map(r => ({
+      day: r[CFG.COLS.DAY] || '',
+      date: r[CFG.COLS.DATE] || '',
+      time: `${r[CFG.COLS.TIME] || ''} ${r[CFG.COLS.AMPM] || ''}`.trim(),
+      grant: r[CFG.COLS.GRANT] || ''
     }));
+
+    Logger.log(`apiGetAvailableSlots() returning ${slots.length} slots`);
     return { ok: true, slots };
+
   } catch (err) {
-    return { ok: false, error: err.message };
+    Logger.log('apiGetAvailableSlots() ERROR: ' + err + '\n' + err.stack);
+    return { ok: false, error: err.message || String(err) };
   }
 }
 
@@ -32,25 +43,31 @@ function apiGetAvailableSlots(type, limit) {
  */
 function apiBookAppointment(payload, type, date, time) {
   try {
-    const sh = getSheet_();
+    Logger.log(`apiBookAppointment() called | type=${type} | date=${date} | time=${time}`);
+
+    if (!CFG || !CFG.SHEET_ID) throw new Error('Configuration (CFG) not found.');
+
     const data = readAllAppointments_();
-    const headers = Object.keys(data[0]);
+    if (!Array.isArray(data) || !data.length) throw new Error('No appointment data found.');
+
     const rowIndex = data.findIndex(r =>
-      r[CFG.COLS.TYPE] === type &&
-      r[CFG.COLS.DATE] === date &&
-      `${r[CFG.COLS.TIME]} ${r[CFG.COLS.AMPM]}` === time
-    ) + 2; // +2 because headers + 1-based index
+      String(r[CFG.COLS.TYPE]).trim().toLowerCase() === String(type).trim().toLowerCase() &&
+      String(r[CFG.COLS.DATE]).trim() === String(date).trim() &&
+      `${r[CFG.COLS.TIME]} ${r[CFG.COLS.AMPM]}`.trim() === String(time).trim()
+    ) + 2; // +2 for header row offset
 
-    if (rowIndex < 2) throw new Error('Appointment slot not found');
+    if (rowIndex < 2) throw new Error(`Appointment slot not found for ${type} ${date} ${time}`);
 
-    // Merge payload + updates
     payload[CFG.COLS.STATUS] = 'Reserved';
     payload[CFG.COLS.NEEDS_SCHED] = 'Yes';
 
     updateAppointmentRow_(rowIndex, payload);
 
+    Logger.log(`Appointment row ${rowIndex} successfully updated.`);
     return { ok: true };
+
   } catch (err) {
-    return { ok: false, error: err.message };
+    Logger.log('apiBookAppointment() ERROR: ' + err + '\n' + err.stack);
+    return { ok: false, error: err.message || String(err) };
   }
 }
