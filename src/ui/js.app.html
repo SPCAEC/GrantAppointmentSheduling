@@ -45,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ───────────────────────────────────────────────
-  // Schedule Flow  (now live with backend)
+  // Schedule Flow (now with robust backend handling)
   // ───────────────────────────────────────────────
   function renderScheduleFlow(container) {
     container.innerHTML = `
@@ -104,27 +104,41 @@ document.addEventListener('DOMContentLoaded', () => {
     // ─── Load available slots from backend ──────────────
     function fetchSlots() {
       slotGrid.innerHTML = `<div class="spinner"></div>`;
+      console.log('Calling apiGetAvailableSlots with:', selectedType, slotsShown);
+
       google.script.run
         .withSuccessHandler(res => {
-          if (!res.ok) {
-            slotGrid.innerHTML = `<p class="error">Error loading slots: ${res.error}</p>`;
+          console.log('apiGetAvailableSlots response:', res);
+
+          // Safety guards
+          if (!res) {
+            slotGrid.innerHTML = `<p class="error">No response from server (null result). Check script logs.</p>`;
             return;
           }
-          renderSlots(res.slots);
+
+          if (!res.ok) {
+            slotGrid.innerHTML = `<p class="error">Error loading slots: ${res.error || 'Unknown error'}</p>`;
+            return;
+          }
+
+          renderSlots(res.slots || []);
         })
         .withFailureHandler(err => {
-          slotGrid.innerHTML = `<p class="error">Server error loading slots</p>`;
-          console.error(err);
+          console.error('Fetch slots failed:', err);
+          slotGrid.innerHTML = `<p class="error">Server error loading slots. See console for details.</p>`;
         })
         .apiGetAvailableSlots(selectedType, slotsShown);
     }
 
     function renderSlots(slots) {
+      console.log('Rendering slots:', slots);
       slotGrid.innerHTML = '';
-      if (!slots.length) {
+
+      if (!slots || !slots.length) {
         slotGrid.innerHTML = `<p>No available appointments found.</p>`;
         return;
       }
+
       slots.forEach(slot => {
         const card = document.createElement('div');
         card.className = 'card';
@@ -217,17 +231,27 @@ document.addEventListener('DOMContentLoaded', () => {
         'Transportation Required': transport
       };
 
+      console.log('Booking appointment payload:', payload, selectedType, selectedSlot);
+
       google.script.run
         .withSuccessHandler(res => {
-          if (!res.ok) {
-            stepConfirm.innerHTML = `<p class="error">Booking failed: ${res.error}</p>`;
+          console.log('apiBookAppointment response:', res);
+
+          if (!res) {
+            stepConfirm.innerHTML = `<p class="error">No response from server (null result). Check logs.</p>`;
             return;
           }
+
+          if (!res.ok) {
+            stepConfirm.innerHTML = `<p class="error">Booking failed: ${res.error || 'Unknown error'}</p>`;
+            return;
+          }
+
           showConfirmation();
         })
         .withFailureHandler(err => {
-          stepConfirm.innerHTML = `<p class="error">Server error booking appointment</p>`;
-          console.error(err);
+          console.error('Booking failed:', err);
+          stepConfirm.innerHTML = `<p class="error">Server error booking appointment. See console for details.</p>`;
         })
         .apiBookAppointment(payload, selectedType, selectedSlot.date, selectedSlot.time);
     }
