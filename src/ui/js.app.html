@@ -45,10 +45,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ───────────────────────────────────────────────
-  // Schedule Flow (now with robust backend handling)
+  // Schedule Flow
   // ───────────────────────────────────────────────
   function renderScheduleFlow(container) {
-     container.innerHTML = `
+    container.innerHTML = `
       <div id="step-type" class="schedule-step">
         <h2>What type of appointment?</h2>
         <div class="option-buttons">
@@ -78,19 +78,20 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
     `;
 
-    const stepType   = $('#step-type');
-    const stepSlots  = $('#step-slots');
-    const stepForm   = $('#step-form');
-    const stepConfirm= $('#step-confirm');
-    const slotGrid   = $('#slotGrid');
-    const showMoreBtn= $('#showMoreBtn');
-    const continueBtn= $('#continueBtn');
+    // Scope queries to this container only
+    const stepType    = container.querySelector('#step-type');
+    const stepSlots   = container.querySelector('#step-slots');
+    const stepForm    = container.querySelector('#step-form');
+    const stepConfirm = container.querySelector('#step-confirm');
+    const slotGrid    = container.querySelector('#slotGrid');
+    const showMoreBtn = container.querySelector('#showMoreBtn');
+    const continueBtn = container.querySelector('#continueBtn');
 
     let selectedType = null;
     let slotsShown   = 6;
     let selectedSlot = null;
 
-    // Step 1 → Step 2
+    // ─── Step 1 → Step 2 ───────────────────────────────
     stepType.querySelectorAll('button[data-type]').forEach(btn => {
       btn.addEventListener('click', () => {
         selectedType = btn.dataset.type;
@@ -109,31 +110,25 @@ document.addEventListener('DOMContentLoaded', () => {
       google.script.run
         .withSuccessHandler(res => {
           console.log('apiGetAvailableSlots response:', res);
-
-          // Safety guards
           if (!res) {
-            slotGrid.innerHTML = `<p class="error">No response from server (null result). Check script logs.</p>`;
+            slotGrid.innerHTML = `<p class="error">No response from server.</p>`;
             return;
           }
-
           if (!res.ok) {
             slotGrid.innerHTML = `<p class="error">Error loading slots: ${res.error || 'Unknown error'}</p>`;
             return;
           }
-
           renderSlots(res.slots || []);
         })
         .withFailureHandler(err => {
           console.error('Fetch slots failed:', err);
-          slotGrid.innerHTML = `<p class="error">Server error loading slots. See console for details.</p>`;
+          slotGrid.innerHTML = `<p class="error">Server error loading slots.</p>`;
         })
         .apiGetAvailableSlots(selectedType, slotsShown);
     }
 
     function renderSlots(slots) {
-      console.log('Rendering slots:', slots);
       slotGrid.innerHTML = '';
-
       if (!slots || !slots.length) {
         slotGrid.innerHTML = `<p>No available appointments found.</p>`;
         return;
@@ -166,7 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ─── Step 3: Client & Pet Form ──────────────
     function renderFormFields() {
-      const f = $('#formFields');
+      const f = container.querySelector('#formFields');
       f.innerHTML = `
         <div class="field"><label>First Name</label><input type="text" id="firstName"></div>
         <div class="field"><label>Last Name</label><input type="text" id="lastName"></div>
@@ -183,16 +178,13 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
     }
 
-    // ─── Step 4: Continue → Book appointment ──────────────
+    // ─── Step 4: Continue → Modal → Confirm ──────────────
     continueBtn.addEventListener('click', showTransportModal);
 
     function scrollTop() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    // ───────────────────────────────────────────────
-    // Modal → Confirmation
-    // ───────────────────────────────────────────────
     function showTransportModal() {
       const modal = document.createElement('div');
       modal.className = 'modal';
@@ -216,18 +208,17 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // ─── Call backend to book appointment ──────────────
     function bookAppointment(transport) {
       stepForm.classList.add('hidden');
       stepConfirm.classList.remove('hidden');
 
       const payload = {
-        'First Name': $('#firstName').value.trim(),
-        'Last Name': $('#lastName').value.trim(),
-        'Email': $('#email').value.trim(),
-        'Phone': $('#phone').value.trim(),
-        'Pet Name': $('#petName').value.trim(),
-        'Species': $('#species').value,
+        'First Name': container.querySelector('#firstName').value.trim(),
+        'Last Name': container.querySelector('#lastName').value.trim(),
+        'Email': container.querySelector('#email').value.trim(),
+        'Phone': container.querySelector('#phone').value.trim(),
+        'Pet Name': container.querySelector('#petName').value.trim(),
+        'Species': container.querySelector('#species').value,
         'Transportation Required': transport
       };
 
@@ -236,22 +227,19 @@ document.addEventListener('DOMContentLoaded', () => {
       google.script.run
         .withSuccessHandler(res => {
           console.log('apiBookAppointment response:', res);
-
           if (!res) {
-            stepConfirm.innerHTML = `<p class="error">No response from server (null result). Check logs.</p>`;
+            stepConfirm.innerHTML = `<p class="error">No response from server.</p>`;
             return;
           }
-
           if (!res.ok) {
             stepConfirm.innerHTML = `<p class="error">Booking failed: ${res.error || 'Unknown error'}</p>`;
             return;
           }
-
           showConfirmation();
         })
         .withFailureHandler(err => {
           console.error('Booking failed:', err);
-          stepConfirm.innerHTML = `<p class="error">Server error booking appointment. See console for details.</p>`;
+          stepConfirm.innerHTML = `<p class="error">Server error booking appointment.</p>`;
         })
         .apiBookAppointment(payload, selectedType, selectedSlot.date, selectedSlot.time);
     }
@@ -264,13 +252,11 @@ document.addEventListener('DOMContentLoaded', () => {
           <button id="doneBtn" class="btn secondary">Done</button>
         </div>
       `;
-      $('#bookAnotherBtn').addEventListener('click', () => {
-        const target = $('#view-schedule');
-        target.innerHTML = '';
-        renderScheduleFlow(target);
+      container.querySelector('#bookAnotherBtn').addEventListener('click', () => {
+        renderScheduleFlow(container);
         scrollTop();
       });
-      $('#doneBtn').addEventListener('click', () => backBtn.click());
+      container.querySelector('#doneBtn').addEventListener('click', () => backBtn.click());
     }
   }
 });
