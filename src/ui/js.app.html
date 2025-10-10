@@ -78,7 +78,6 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
     `;
 
-    // Scope queries to this container only
     const stepType    = container.querySelector('#step-type');
     const stepSlots   = container.querySelector('#step-slots');
     const stepForm    = container.querySelector('#step-form');
@@ -91,10 +90,15 @@ document.addEventListener('DOMContentLoaded', () => {
     let slotsShown   = 6;
     let selectedSlot = null;
 
-    // ─── Step 1 → Step 2 ───────────────────────────────
+    // ─── Step 1: Choose appointment type ──────────────
     stepType.querySelectorAll('button[data-type]').forEach(btn => {
       btn.addEventListener('click', () => {
-        selectedType = btn.dataset.type;
+        selectedType = btn.dataset.type || '';
+        if (!selectedType) {
+          alert('Please select an appointment type.');
+          return;
+        }
+        console.log('Appointment type selected:', selectedType);
         stepType.classList.add('hidden');
         stepSlots.classList.remove('hidden');
         fetchSlots();
@@ -102,8 +106,13 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    // ─── Load available slots from backend ──────────────
+    // ─── Fetch available slots ──────────────
     function fetchSlots() {
+      if (!selectedType) {
+        console.warn('fetchSlots() called without selectedType');
+        return;
+      }
+
       slotGrid.innerHTML = `<div class="spinner"></div>`;
       console.log('Calling apiGetAvailableSlots with:', selectedType, slotsShown);
 
@@ -118,6 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
             slotGrid.innerHTML = `<p class="error">Error loading slots: ${res.error || 'Unknown error'}</p>`;
             return;
           }
+          console.log('Slots array length:', res.slots?.length || 0);
           renderSlots(res.slots || []);
         })
         .withFailureHandler(err => {
