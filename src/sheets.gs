@@ -38,13 +38,29 @@ function readAllAppointments_() {
 function getAvailableSlots_(type, limit) {
   Logger.log(`getAvailableSlots_: Searching for type=${type}, limit=${limit}`);
   const all = readAllAppointments_();
+
   const avail = all.filter(r =>
     String(r[CFG.COLS.TYPE]).toLowerCase() === String(type).toLowerCase() &&
     String(r[CFG.COLS.STATUS]).toLowerCase() === 'available'
   );
 
-  avail.sort((a, b) => new Date(a[CFG.COLS.DATE]) - new Date(b[CFG.COLS.DATE]));
-  const sliced = avail.slice(0, limit);
+  // Normalize values for safe JSON serialization
+  const normalized = avail.map(r => ({
+    [CFG.COLS.DAY]: String(r[CFG.COLS.DAY] || ''),
+    [CFG.COLS.DATE]: r[CFG.COLS.DATE] instanceof Date
+      ? Utilities.formatDate(r[CFG.COLS.DATE], Session.getScriptTimeZone(), 'MM/dd/yyyy')
+      : String(r[CFG.COLS.DATE] || ''),
+    [CFG.COLS.TIME]: String(r[CFG.COLS.TIME] || ''),
+    [CFG.COLS.AMPM]: String(r[CFG.COLS.AMPM] || ''),
+    [CFG.COLS.GRANT]: String(r[CFG.COLS.GRANT] || ''),
+    [CFG.COLS.TYPE]: String(r[CFG.COLS.TYPE] || ''),
+    [CFG.COLS.STATUS]: String(r[CFG.COLS.STATUS] || ''),
+  }));
+
+  // Sort by date/time and return first N
+  normalized.sort((a, b) => new Date(a[CFG.COLS.DATE]) - new Date(b[CFG.COLS.DATE]));
+  const sliced = normalized.slice(0, limit);
+
   Logger.log(`getAvailableSlots_: Returning ${sliced.length} available slots`);
   return sliced;
 }

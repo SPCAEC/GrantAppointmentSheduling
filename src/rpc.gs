@@ -16,13 +16,13 @@ function apiGetAvailableSlots(type, limit) {
     if (!CFG || !CFG.SHEET_ID) throw new Error('Configuration (CFG) not found.');
 
     const slotsRaw = getAvailableSlots_(type, limit);
-    if (!slotsRaw || !Array.isArray(slotsRaw)) throw new Error('No slot data returned from getAvailableSlots_()');
+    if (!Array.isArray(slotsRaw)) throw new Error('No slot data returned from getAvailableSlots_()');
 
     const slots = slotsRaw.map(r => ({
-      day: r[CFG.COLS.DAY] || '',
-      date: r[CFG.COLS.DATE] || '',
+      day: String(r[CFG.COLS.DAY] || ''),
+      date: String(r[CFG.COLS.DATE] || ''),
       time: `${r[CFG.COLS.TIME] || ''} ${r[CFG.COLS.AMPM] || ''}`.trim(),
-      grant: r[CFG.COLS.GRANT] || ''
+      grant: String(r[CFG.COLS.GRANT] || '')
     }));
 
     Logger.log(`apiGetAvailableSlots() returning ${slots.length} slots`);
@@ -54,7 +54,7 @@ function apiBookAppointment(payload, type, date, time) {
       String(r[CFG.COLS.TYPE]).trim().toLowerCase() === String(type).trim().toLowerCase() &&
       String(r[CFG.COLS.DATE]).trim() === String(date).trim() &&
       `${r[CFG.COLS.TIME]} ${r[CFG.COLS.AMPM]}`.trim() === String(time).trim()
-    ) + 2; // +2 for header row offset
+    ) + 2;
 
     if (rowIndex < 2) throw new Error(`Appointment slot not found for ${type} ${date} ${time}`);
 
