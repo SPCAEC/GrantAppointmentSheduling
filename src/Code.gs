@@ -9,15 +9,10 @@
  */
 
 function doGet() {
-  try {
-    Logger.log('doGet() called — serving ui/index.html');
-    return HtmlService.createHtmlOutputFromFile('ui/index')
-      .setTitle('Grant Appointment Scheduling')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-  } catch (err) {
-    Logger.log('doGet() ERROR: ' + err);
-    throw err;
-  }
+  return HtmlService.createTemplateFromFile('ui/index')
+    .evaluate()
+    .setTitle('Grant Appointment Scheduling')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 /**
