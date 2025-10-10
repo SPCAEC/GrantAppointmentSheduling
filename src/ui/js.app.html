@@ -155,6 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     showMoreBtn.addEventListener('click', () => {
+      slotGrid.innerHTML = `<div class="spinner"></div>`;
       slotsShown += 6;
       fetchSlots();
     });
@@ -176,6 +177,14 @@ document.addEventListener('DOMContentLoaded', () => {
           </select>
         </div>
       `;
+      // --- Auto-format phone number on blur ---
+      const phoneInput = container.querySelector('#phone');
+      phoneInput.addEventListener('blur', () => {
+        const digits = phoneInput.value.replace(/\D/g, '');
+        if (digits.length === 10) {
+          phoneInput.value = `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
+        }
+      });
     }
 
     // ─── Step 4: Continue / Book ───────────────
