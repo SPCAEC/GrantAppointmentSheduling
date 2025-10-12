@@ -166,7 +166,7 @@ function apiCreateVetRecordsFolder(firstName, lastName, petName, clientEmail) {
     Logger.log('apiCreateVetRecordsFolder() ERROR: ' + err);
     return { ok: false, error: err.message };
   }
-}dd
+}
 
 
 /**
