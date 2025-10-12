@@ -139,12 +139,13 @@ document.addEventListener('DOMContentLoaded', () => {
         card.className = 'card';
         card.innerHTML = `
           <div><strong>${selectedType}</strong></div>
-          <div>${slot.day || ''} ${slot.date || ''}</div>
-          <div>${slot.time || ''}</div>
+          <div>${slot.day} ${slot.date}</div>
+          <div>${slot.time}</div>
           <div>Grant: ${slot.grant || '—'}</div>
+          <small style="opacity:0.6;">ID: ${slot.id}</small>
         `;
         card.addEventListener('click', () => {
-          selectedSlot = slot;
+          selectedSlot = slot; // includes .id now
           stepSlots.classList.add('hidden');
           stepForm.classList.remove('hidden');
           renderFormFields();
@@ -316,7 +317,7 @@ document.addEventListener('DOMContentLoaded', () => {
           console.error('Booking failed:', err);
           stepConfirm.innerHTML = `<p class="error">Server error booking appointment.</p>`;
         })
-        .apiBookAppointment(payload, selectedType, selectedSlot.date, selectedSlot.time);
+        .apiBookAppointment(payload, selectedSlot.id);
     }
 
     function showConfirmation() {

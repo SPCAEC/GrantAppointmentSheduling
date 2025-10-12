@@ -10,6 +10,7 @@ const CFG = {
 
   // Column headers — must match row 1 headers in the sheet exactly
   COLS: {
+    ID: 'Appointment ID',       // ← add this line
     TYPE: 'Appointment Type',
     STATUS: 'Appointment Status',
     DAY: 'Day of Week',
