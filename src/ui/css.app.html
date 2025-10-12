@@ -199,4 +199,36 @@ input:focus, select:focus, textarea:focus {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+.upload-list {
+  margin-top: 1rem;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.upload-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: var(--radius);
+  padding: 0.4rem 0.8rem;
+  margin-bottom: 0.4rem;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.spinner.small {
+  width: 18px;
+  height: 18px;
+  border-width: 2px;
+  margin: 0;
+}
+
+.status.success {
+  color: #16a34a;
+}
+
+.status.error {
+  color: #dc2626;
+}
 </style>

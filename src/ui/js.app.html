@@ -300,12 +300,14 @@ document.addEventListener('DOMContentLoaded', () => {
       if (hasVetRecords) {
         inner += `
           <hr>
-          <p>You indicated the client has previous veterinary records for this pet. If you have them now, please upload. If not, choose “Send Record Request” to email the client an upload link.</p>
+          <p>You indicated the client has previous veterinary records for this pet. If you have them now, please upload. 
+          If not, choose “Send Record Request” to email the client an upload link.</p>
           <div class="actions">
             <input type="file" id="recordsUpload" multiple style="display:none;" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
             <button id="uploadBtn" class="btn">Upload Previous Records</button>
             <button id="sendRequestBtn" class="btn secondary">Send Record Request</button>
           </div>
+          <div id="uploadList" class="upload-list"></div>
         `;
       }
 
@@ -313,7 +315,7 @@ document.addEventListener('DOMContentLoaded', () => {
       modal.innerHTML = inner;
       document.body.appendChild(modal);
 
-      // Transport button handlers
+      // ─── Transport buttons ─────────────────────────────────────────
       modal.querySelectorAll('button[data-transport]').forEach(btn => {
         btn.addEventListener('click', () => {
           const transport = btn.dataset.transport;
@@ -325,37 +327,58 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       });
 
-      // Vet record upload
+      // ─── Upload Records Handler ─────────────────────────────────────
       const uploadBtn = modal.querySelector('#uploadBtn');
       if (uploadBtn) {
         uploadBtn.addEventListener('click', () => {
-          google.script.run
-            .withSuccessHandler(res => {
-              if (!res.ok) return alert('Error creating folder.');
-              const input = modal.querySelector('#recordsUpload');
-              input.click();
-              input.onchange = () => {
-                const files = [...input.files];
+          const input = modal.querySelector('#recordsUpload');
+          input.click();
+
+          input.onchange = () => {
+            const files = [...input.files];
+            if (!files.length) return;
+
+            // Create folder before uploading
+            google.script.run
+              .withSuccessHandler(res => {
+                if (!res.ok) return alert('Error creating folder.');
+                const uploadList = modal.querySelector('#uploadList');
+                uploadList.innerHTML = '';
+
+                let completed = 0;
                 files.forEach(file => {
+                  const row = document.createElement('div');
+                  row.className = 'upload-item';
+                  row.innerHTML = `<span>${file.name}</span> <span class="spinner small"></span>`;
+                  uploadList.appendChild(row);
+
                   const reader = new FileReader();
                   reader.onload = e => {
                     const base64 = e.target.result.split(',')[1];
                     google.script.run
-                      .withFailureHandler(err => alert('Upload failed: ' + err))
+                      .withSuccessHandler(() => {
+                        completed++;
+                        row.innerHTML = `<span>${file.name}</span> <span class="status success">✅</span>`;
+                        if (completed === files.length) {
+                          alert('All files uploaded successfully!');
+                          modal.remove();
+                          bookAppointment(modal.dataset.transport);
+                        }
+                      })
+                      .withFailureHandler(err => {
+                        row.innerHTML = `<span>${file.name}</span> <span class="status error">❌ ${err}</span>`;
+                      })
                       .apiUploadVetRecord(file.name, base64, res.folderId);
                   };
                   reader.readAsDataURL(file);
                 });
-                alert('Files uploaded successfully!');
-                modal.remove();
-                bookAppointment(modal.dataset.transport);
-              };
-            })
-            .apiCreateVetRecordsFolder(firstName, lastName, petName, clientEmail);
+              })
+              .apiCreateVetRecordsFolder(firstName, lastName, petName, clientEmail);
+          };
         });
       }
 
-      // Vet record email request
+      // ─── Send Records Request Handler ───────────────────────────────
       const sendBtn = modal.querySelector('#sendRequestBtn');
       if (sendBtn) {
         sendBtn.addEventListener('click', () => {
