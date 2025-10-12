@@ -162,55 +162,88 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ─── Step 3: Form ───────────────
     // ─── Step 3: Client & Pet Form ──────────────
-function renderFormFields() {
-  const f = container.querySelector('#formFields');
-  f.innerHTML = `
-    <div class="field"><label>First Name</label><input type="text" id="firstName" required></div>
-    <div class="field"><label>Last Name</label><input type="text" id="lastName" required></div>
-    <div class="field"><label>Email</label><input type="email" id="email"></div>
-    <div class="field"><label>Phone</label><input type="tel" id="phone" placeholder="(###) ###-####" required></div>
+  // ─── Step 3: Client & Pet Form ──────────────
+  function renderFormFields() {
+    const f = container.querySelector('#formFields');
+    f.innerHTML = `
+      <div class="field"><label>First Name</label><input type="text" id="firstName" required></div>
+      <div class="field"><label>Last Name</label><input type="text" id="lastName" required></div>
+      <div class="field"><label>Email</label><input type="email" id="email"></div>
+      <div class="field"><label>Phone</label><input type="tel" id="phone" placeholder="(###) ###-####" required></div>
 
-    <hr style="margin:1rem 0; border:none; border-top:1px solid #e5e7eb;">
-    <h3>Address</h3>
-    <div class="field"><label>Street Address</label><input type="text" id="address"></div>
-    <div class="field"><label>City</label><input type="text" id="city"></div>
-    <div class="field">
-      <label>State</label>
-      <select id="state">
-        <option value="">— Select —</option>
-        <option>NY</option>
-        <option>PA</option>
-        <option>Other</option>
-      </select>
-    </div>
-    <div class="field"><label>ZIP Code</label><input type="text" id="zip" maxlength="10" pattern="\\d{5}(-\\d{4})?"></div>
+      <hr style="margin:1rem 0; border:none; border-top:1px solid #e5e7eb;">
+      <h3>Address</h3>
+      <div class="field"><label>Street Address</label><input type="text" id="address"></div>
+      <div class="field"><label>City</label><input type="text" id="city"></div>
+      <div class="field">
+        <label>State</label>
+        <select id="state">
+          <option value="">— Select —</option>
+          <option>NY</option>
+          <option>PA</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="field"><label>ZIP Code</label><input type="text" id="zip" maxlength="10" pattern="\\d{5}(-\\d{4})?"></div>
 
-    <hr style="margin:1rem 0; border:none; border-top:1px solid #e5e7eb;">
-    <h3>Pet Information</h3>
-    <div class="field"><label>Pet Name</label><input type="text" id="petName" required></div>
-    <div class="field">
-      <label>Species</label>
-      <select id="species" required>
-        <option value="">— Select —</option>
-        <option value="Canine">Canine</option>
-        <option value="Feline">Feline</option>
-        <option value="Other">Other</option>
-      </select>
-    </div>
-    <div class="field"><label>Breed</label><input type="text" id="breed"></div>
-    <div class="field"><label>Approx. Weight (lbs)</label><input type="number" id="weight" min="0" step="0.1"></div>
-    <div class="field"><label>Additional Notes</label><textarea id="notes" rows="3" placeholder="Any special needs or concerns..."></textarea></div>
-  `;
+      <hr style="margin:1rem 0; border:none; border-top:1px solid #e5e7eb;">
+      <h3>Pet Information</h3>
+      <div class="field"><label>Pet Name</label><input type="text" id="petName" required></div>
+      <div class="field">
+        <label>Species</label>
+        <select id="species" required>
+          <option value="">— Select —</option>
+          <option value="Canine">Canine</option>
+          <option value="Feline">Feline</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div class="field"><label>Primary Breed</label><input type="text" id="breedOne"></div>
+      <div class="field"><label>Secondary Breed</label><input type="text" id="breedTwo"></div>
+      <div class="field"><label>Color</label><input type="text" id="color"></div>
+      <div class="field"><label>Color Pattern</label><input type="text" id="colorPattern"></div>
+      <div class="field">
+        <label>Vaccines Needed</label>
+        <select id="vaccines">
+          <option value="">— Select Species First —</option>
+        </select>
+      </div>
+      <div class="field"><label>Approx. Weight (lbs)</label><input type="number" id="weight" min="0" step="0.1"></div>
+      <div class="field"><label>Additional Notes</label><textarea id="notes" rows="3" placeholder="Any special needs or concerns..."></textarea></div>
+    `;
 
-  // --- Auto-format phone number on blur ---
-  const phoneInput = container.querySelector('#phone');
-  phoneInput.addEventListener('blur', () => {
-    const digits = phoneInput.value.replace(/\D/g, '');
-    if (digits.length === 10) {
-      phoneInput.value = `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
-    }
-  });
-}
+    // --- Auto-format phone number on blur ---
+    const phoneInput = container.querySelector('#phone');
+    phoneInput.addEventListener('blur', () => {
+      const digits = phoneInput.value.replace(/\D/g, '');
+      if (digits.length === 10) {
+        phoneInput.value = `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
+      }
+    });
+
+    // --- Dynamic vaccines list based on species ---
+    const speciesSelect = container.querySelector('#species');
+    const vaccineSelect = container.querySelector('#vaccines');
+
+    // fetch vaccine lists from backend
+    google.script.run
+      .withSuccessHandler(res => {
+        if (!res || !res.ok) return;
+        const lists = { canine: res.canine || [], feline: res.feline || [] };
+
+        speciesSelect.addEventListener('change', () => {
+          const val = speciesSelect.value;
+          let options = [];
+          if (val === 'Canine') options = lists.canine;
+          else if (val === 'Feline') options = lists.feline;
+          else options = [];
+          vaccineSelect.innerHTML = options.length
+            ? `<option value="">— Select —</option>` + options.map(v => `<option>${v}</option>`).join('')
+            : `<option value="">— No Vaccines Available —</option>`;
+        });
+      })
+      .apiGetVaccineLists();
+  }
 
     // ─── Step 4: Continue / Book ───────────────
     continueBtn.addEventListener('click', showTransportModal);
@@ -257,7 +290,11 @@ function renderFormFields() {
         'ZIP': container.querySelector('#zip').value.trim(),
         'Pet Name': container.querySelector('#petName').value.trim(),
         'Species': container.querySelector('#species').value.trim(),
-        'Breed': container.querySelector('#breed').value.trim(),
+        'Breed One': container.querySelector('#breedOne').value.trim(),
+        'Breed Two': container.querySelector('#breedTwo').value.trim(),
+        'Color': container.querySelector('#color').value.trim(),
+        'Color Pattern': container.querySelector('#colorPattern').value.trim(),
+        'Vaccines Needed': container.querySelector('#vaccines').value.trim(),
         'Weight': container.querySelector('#weight').value.trim(),
         'Notes': container.querySelector('#notes').value.trim(),
         'Transportation Required': transport

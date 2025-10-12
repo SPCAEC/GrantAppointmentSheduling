@@ -71,3 +71,12 @@ function apiBookAppointment(payload, type, date, time) {
     return { ok: false, error: err.message || String(err) };
   }
 }
+/**
+ * Returns vaccine lists from Script Properties.
+ */
+function apiGetVaccineLists() {
+  const props = PropertiesService.getScriptProperties();
+  const canine = (props.getProperty('VACCINE_LIST_CANINE') || '').split(',').map(s => s.trim()).filter(Boolean);
+  const feline = (props.getProperty('VACCINE_LIST_FELINE') || '').split(',').map(s => s.trim()).filter(Boolean);
+  return { ok: true, canine, feline };
+}
