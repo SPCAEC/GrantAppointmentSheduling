@@ -323,4 +323,53 @@ p.error {
   .btn { width: 100%; font-size: 1rem; }
   .actions { flex-direction: column; gap: 0.75rem; }
 }
+/* ───────── Option Lists (Vaccines / Additional Services) ───────── */
+.option-list {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+  text-align: left;
+}
+
+.radio-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.radio-option input[type="radio"],
+.radio-option input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ───────── Align Yes/No Buttons Left ───────── */
+.field .option-buttons {
+  display: flex;
+  justify-content: flex-start; /* previously centered */
+  align-items: center;
+  gap: 1.5rem;
+  margin-top: 0.25rem;
+}
+
+.field .option-buttons label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 1rem;
+}
+
+/* ───────── Slight visual polish for spacing consistency ───────── */
+.field label {
+  font-weight: 500;
+  margin-bottom: 0.1rem;
+}
+
+.field h3 {
+  margin-top: 1.25rem;
+}
 </style>
