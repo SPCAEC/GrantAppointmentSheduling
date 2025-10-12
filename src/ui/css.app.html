@@ -7,8 +7,11 @@
   --text: #111827;
   --radius: 16px;
   --shadow: 0 2px 8px rgba(0,0,0,0.08);
+  --error: #dc2626;
+  --success: #16a34a;
 }
 
+/* ───────── Base Layout ───────── */
 body {
   font-family: system-ui, sans-serif;
   background: var(--bg);
@@ -29,7 +32,7 @@ body {
   box-sizing: border-box;
 }
 
-/* ───────── Header and Titles ───────── */
+/* ───────── Header ───────── */
 .header {
   display: flex;
   align-items: center;
@@ -43,11 +46,11 @@ body {
 .app-title {
   text-align: center;
   margin-bottom: 1rem;
-  font-size: 1.5rem;
+  font-size: 1.6rem;
   font-weight: 600;
 }
 
-/* ───────── Main Menu Tiles ───────── */
+/* ───────── Menu Tiles ───────── */
 .tiles {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -96,15 +99,10 @@ body {
   color: #111827;
 }
 
-/* ───────── Sub-views ───────── */
-.sub-view {
-  min-height: 400px;
-}
+/* ───────── Layout Steps ───────── */
+.sub-view { min-height: 400px; }
 
-.schedule-step {
-  display: grid;
-  gap: 1.25rem;
-}
+.schedule-step { display: grid; gap: 1.25rem; }
 
 .option-buttons {
   display: flex;
@@ -112,7 +110,7 @@ body {
   gap: 1rem;
 }
 
-/* ───────── Appointment Cards ───────── */
+/* ───────── Cards ───────── */
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -135,14 +133,9 @@ body {
 }
 
 /* ───────── Form Fields ───────── */
-.field {
-  display: grid;
-  gap: 0.25rem;
-}
+.field { display: grid; gap: 0.25rem; }
 
-.field label {
-  font-weight: 500;
-}
+.field label { font-weight: 500; }
 
 input, select, textarea {
   padding: 0.5rem;
@@ -159,12 +152,13 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 2px #bae6fd;
 }
 
-/* ───────── Action Buttons Row ───────── */
+/* ───────── Actions Row ───────── */
 .actions {
   display: flex;
   justify-content: center;
   gap: 1rem;
   margin-top: 1.5rem;
+  flex-wrap: wrap;
 }
 
 /* ───────── Modal ───────── */
@@ -182,7 +176,16 @@ input:focus, select:focus, textarea:focus {
   padding: 2rem;
   border-radius: var(--radius);
   text-align: center;
-  max-width: 400px;
+  max-width: 500px;
+  width: 90%;
+  box-sizing: border-box;
+}
+
+/* ───────── Divider ───────── */
+hr, .divider {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 1rem 0;
 }
 
 /* ───────── Spinner ───────── */
@@ -196,13 +199,22 @@ input:focus, select:focus, textarea:focus {
   margin: 2rem auto;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.spinner.small {
+  width: 18px;
+  height: 18px;
+  border-width: 2px;
+  margin: 0 0.3rem;
+  vertical-align: middle;
 }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ───────── Upload Section ───────── */
 .upload-list {
   margin-top: 1rem;
   text-align: left;
   font-size: 0.9rem;
+  padding-left: 0.2rem;
 }
 
 .upload-item {
@@ -215,20 +227,32 @@ input:focus, select:focus, textarea:focus {
   padding: 0.4rem 0.8rem;
   margin-bottom: 0.4rem;
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  flex-wrap: wrap;
+  word-break: break-word;
 }
 
-.spinner.small {
-  width: 18px;
-  height: 18px;
-  border-width: 2px;
-  margin: 0;
+.status.success { color: var(--success); font-weight: 500; }
+.status.error { color: var(--error); font-weight: 500; }
+
+/* ───────── Feedback Messages ───────── */
+p.error {
+  color: var(--error);
+  background: #fee2e2;
+  padding: 0.8rem 1rem;
+  border-radius: var(--radius);
 }
 
-.status.success {
-  color: #16a34a;
+.success-message {
+  color: var(--success);
+  background: #dcfce7;
+  padding: 0.8rem 1rem;
+  border-radius: var(--radius);
 }
 
-.status.error {
-  color: #dc2626;
+/* ───────── Mobile Adjustments ───────── */
+@media (max-width: 600px) {
+  .app { padding: 1rem; }
+  .btn { width: 100%; font-size: 1rem; }
+  .actions { flex-direction: column; gap: 0.75rem; }
 }
 </style>

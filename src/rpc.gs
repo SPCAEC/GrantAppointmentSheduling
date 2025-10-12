@@ -11,6 +11,8 @@ function apiGetAvailableSlots(type, limit) {
     Logger.log(`apiGetAvailableSlots() called | type=${type} | limit=${limit}`);
     limit = limit || 6;
 
+    if (!CFG || !CFG.SHEET_ID) throw new Error('Configuration (CFG) not found.');
+
     const slotsRaw = getAvailableSlots_(type, limit);
     if (!Array.isArray(slotsRaw)) throw new Error('No slot data returned from getAvailableSlots_()');
 
@@ -27,7 +29,7 @@ function apiGetAvailableSlots(type, limit) {
     return { ok: true, slots };
 
   } catch (err) {
-    Logger.log('apiGetAvailableSlots() ERROR: ' + err);
+    Logger.log('apiGetAvailableSlots() ERROR: ' + err + '\n' + err.stack);
     return { ok: false, error: err.message || String(err) };
   }
 }
@@ -41,6 +43,7 @@ function apiBookAppointment(payload, type, date, time, appointmentId) {
   try {
     Logger.log(`apiBookAppointment() called | type=${type} | date=${date} | time=${time} | id=${appointmentId}`);
     if (!CFG || !CFG.SHEET_ID) throw new Error('Configuration (CFG) not found.');
+    if (!payload || typeof payload !== 'object') throw new Error('Invalid payload');
 
     const data = readAllAppointments_();
     if (!Array.isArray(data) || !data.length) throw new Error('No appointment data found.');
@@ -87,63 +90,87 @@ function apiBookAppointment(payload, type, date, time, appointmentId) {
     return { ok: false, error: err.message || String(err) };
   }
 }
+
+
 /**
  * Returns vaccine lists from Script Properties.
  */
 function apiGetVaccineLists() {
-  const props = PropertiesService.getScriptProperties();
-  const canine = (props.getProperty('VACCINE_LIST_CANINE') || '').split(',').map(s => s.trim()).filter(Boolean);
-  const feline = (props.getProperty('VACCINE_LIST_FELINE') || '').split(',').map(s => s.trim()).filter(Boolean);
-  return { ok: true, canine, feline };
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const canine = (props.getProperty('VACCINE_LIST_CANINE') || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    const feline = (props.getProperty('VACCINE_LIST_FELINE') || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    return { ok: true, canine, feline };
+  } catch (err) {
+    Logger.log('apiGetVaccineLists() ERROR: ' + err);
+    return { ok: false, error: err.message };
+  }
 }
+
+
 /**
  * Returns additional services list from Script Properties.
  */
 function apiGetAdditionalServices() {
-  const props = PropertiesService.getScriptProperties();
-  const list = (props.getProperty('ADDITIONAL_SERVICES') || '')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
-  return { ok: true, services: list };
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const list = (props.getProperty('ADDITIONAL_SERVICES') || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    return { ok: true, services: list };
+  } catch (err) {
+    Logger.log('apiGetAdditionalServices() ERROR: ' + err);
+    return { ok: false, error: err.message };
+  }
 }
+
 
 /**
  * Handles vet record folder creation and permission setup.
- * @param {string} firstName
- * @param {string} lastName
- * @param {string} petName
- * @param {string} clientEmail
  */
 function apiCreateVetRecordsFolder(firstName, lastName, petName, clientEmail) {
-  const PARENT_ID = '1KMbIfS0Y5q1y7BDbLUj84U3snfXDNPUC';
-  const parent = DriveApp.getFolderById(PARENT_ID);
-  const folderName = `${lastName}_${firstName}_${petName}`.replace(/[^\w\s-]/g, '');
-  
-  // Check if folder already exists
-  const existing = parent.getFoldersByName(folderName);
-  const folder = existing.hasNext() ? existing.next() : parent.createFolder(folderName);
-
-  // Set permissions (limited to Outreach + client)
   try {
-    folder.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
-    folder.addEditor('yourspcaoutreachteam@gmail.com');
-    if (clientEmail) folder.addViewer(clientEmail);
-  } catch (e) {
-    Logger.log('Permission warning: ' + e.message);
-  }
+    const PARENT_ID = '1KMbIfS0Y5q1y7BDbLUj84U3snfXDNPUC';
+    const parent = DriveApp.getFolderById(PARENT_ID);
+    const folderName = `${lastName}_${firstName}_${petName}`.replace(/[^\w\s-]/g, '_');
 
-  return { ok: true, folderId: folder.getId(), url: folder.getUrl() };
+    // Check if folder already exists
+    const existing = parent.getFoldersByName(folderName);
+    const folder = existing.hasNext() ? existing.next() : parent.createFolder(folderName);
+
+    // Set permissions (limited to Outreach + client)
+    try {
+      folder.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
+      folder.addEditor('yourspcaoutreachteam@gmail.com');
+      if (clientEmail) folder.addViewer(clientEmail);
+    } catch (e) {
+      Logger.log('Permission warning: ' + e.message);
+    }
+
+    return { ok: true, folderId: folder.getId(), url: folder.getUrl() };
+  } catch (err) {
+    Logger.log('apiCreateVetRecordsFolder() ERROR: ' + err);
+    return { ok: false, error: err.message };
+  }
 }
+
 
 /**
  * Sends vet records upload email with folder link.
  */
 function apiSendVetRecordsRequest(clientEmail, folderUrl, firstName, petName) {
-  if (!clientEmail) return { ok: false, error: 'Missing client email' };
+  try {
+    if (!clientEmail) return { ok: false, error: 'Missing client email' };
 
-  const subject = `Upload Veterinary Records for ${petName}`;
-  const body = `
+    const subject = `Upload Veterinary Records for ${petName}`;
+    const body = `
 Hello ${firstName},
 
 You can securely upload your previous veterinary records for ${petName} using the link below:
@@ -154,15 +181,22 @@ If you have any questions, please reply to this email or contact the SPCA Outrea
 
 — SPCA Serving Erie County Outreach Team
 `;
-  MailApp.sendEmail({
-    to: clientEmail,
-    name: 'SPCA Outreach Team',
-    from: 'yourspcaoutreachteam@gmail.com',
-    subject,
-    body
-  });
-  return { ok: true };
+    MailApp.sendEmail({
+      to: clientEmail,
+      name: 'SPCA Outreach Team',
+      from: 'yourspcaoutreachteam@gmail.com',
+      subject,
+      body
+    });
+    return { ok: true };
+
+  } catch (err) {
+    Logger.log('apiSendVetRecordsRequest() ERROR: ' + err);
+    return { ok: false, error: err.message };
+  }
 }
+
+
 /**
  * Uploads a base64 file to a given Drive folder.
  */
@@ -170,7 +204,12 @@ function apiUploadVetRecord(filename, base64Data, folderId) {
   try {
     const folder = DriveApp.getFolderById(folderId);
     const bytes = Utilities.base64Decode(base64Data);
-    folder.createFile(Utilities.newBlob(bytes, undefined, filename));
+
+    const blob = Utilities.newBlob(bytes, undefined, filename);
+    blob.setContentTypeFromExtension();
+    folder.createFile(blob);
+
+    Logger.log(`apiUploadVetRecord(): Uploaded ${filename} → folder ${folderId}`);
     return { ok: true };
   } catch (err) {
     Logger.log('apiUploadVetRecord() ERROR: ' + err);

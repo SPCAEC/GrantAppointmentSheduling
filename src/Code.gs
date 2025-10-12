@@ -1,31 +1,37 @@
 /**
  * Grant Appointment Scheduling — Main Entry Point
- * Serves the standalone web app UI and includes shared partials.
+ * Serves the standalone web app and includes UI partials.
  *
- * Notes:
- * - Uses createHtmlOutputFromFile() to keep the same sandbox context
- *   so google.script.run calls work reliably.
- * - The include() helper is used by index.html to inline CSS and JS.
+ * Structure:
+ *  - doGet(): main entry, serves ui/index.html
+ *  - include(): inlines CSS, JS, or partials using <?!= include('path/file'); ?>
  */
 
 function doGet() {
-  return HtmlService.createTemplateFromFile('ui/index')
-    .evaluate()
-    .setTitle('Grant Appointment Scheduling')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  try {
+    return HtmlService.createTemplateFromFile('ui/index')
+      .evaluate()
+      .setTitle('Grant Appointment Scheduling')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+      .setSandboxMode(HtmlService.SandboxMode.IFRAME);
+  } catch (err) {
+    Logger.log('doGet() ERROR: ' + err);
+    return HtmlService.createHtmlOutput('<p>Error loading web app.</p>');
+  }
 }
 
 /**
- * Utility to include sub-files (CSS, JS, partial views)
- * Called from within HTML using: <?!= include('ui/file.html'); ?>
+ * Include helper
+ * Usage: <?!= include('ui/filename'); ?>
+ * Looks for .html automatically if extension omitted.
  */
 function include(filename) {
   try {
-    const file = HtmlService.createHtmlOutputFromFile(filename);
-    if (!file) throw new Error('Include file not found: ' + filename);
-    return file.getContent();
+    const cleanName = filename.endsWith('.html') ? filename : `${filename}.html`;
+    const output = HtmlService.createHtmlOutputFromFile(cleanName);
+    return output.getContent();
   } catch (err) {
     Logger.log('include() ERROR: ' + err);
-    return `<!-- include error: ${err} -->`;
+    return `<!-- include error: ${err.message || err} -->`;
   }
 }

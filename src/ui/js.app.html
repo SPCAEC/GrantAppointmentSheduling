@@ -3,11 +3,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const $  = sel => document.querySelector(sel);
   const $$ = sel => [...document.querySelectorAll(sel)];
 
-  const header       = $('#appHeader');
+  const header = $('#appHeader');
   const sectionTitle = $('#sectionTitle');
-  const backBtn      = $('#backBtn');
-  const mainMenu     = $('#mainMenu');
-  const views        = $$('.sub-view');
+  const backBtn = $('#backBtn');
+  const mainMenu = $('#mainMenu');
+  const views = $$('.sub-view');
 
   // ──────────────────────────────
   // Navigation
@@ -79,19 +79,19 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
     `;
 
-    const stepType    = container.querySelector('#step-type');
-    const stepSlots   = container.querySelector('#step-slots');
-    const stepForm    = container.querySelector('#step-form');
+    const stepType = container.querySelector('#step-type');
+    const stepSlots = container.querySelector('#step-slots');
+    const stepForm = container.querySelector('#step-form');
     const stepConfirm = container.querySelector('#step-confirm');
-    const slotGrid    = container.querySelector('#slotGrid');
+    const slotGrid = container.querySelector('#slotGrid');
     const showMoreBtn = container.querySelector('#showMoreBtn');
     const continueBtn = container.querySelector('#continueBtn');
 
     let selectedType = null;
-    let slotsShown   = 6;
+    let slotsShown = 6;
     let selectedSlot = null;
 
-    // ─── Step 1: Select type ───────────────
+    // Step 1 → Select type
     stepType.querySelectorAll('button[data-type]').forEach(btn => {
       btn.addEventListener('click', () => {
         selectedType = btn.dataset.type;
@@ -103,30 +103,17 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    // ─── Fetch slots ───────────────
     function fetchSlots() {
       google.script.run
         .withSuccessHandler(res => {
-          console.log('apiGetAvailableSlots response:', res);
-
-          if (!res) {
-            slotGrid.innerHTML = `<p class="error">No response from server.</p>`;
+          if (!res || !res.ok) {
+            slotGrid.innerHTML = `<p class="error">${res?.error || 'Error loading slots.'}</p>`;
             return;
           }
-          if (!res.ok) {
-            slotGrid.innerHTML = `<p class="error">Error loading slots: ${res.error || 'Unknown error'}</p>`;
-            return;
-          }
-
-          if (!res.slots || !res.slots.length) {
-            slotGrid.innerHTML = `<p>No available appointments found.</p>`;
-            return;
-          }
-
-          renderSlots(res.slots);
+          renderSlots(res.slots || []);
         })
         .withFailureHandler(err => {
-          console.error('Fetch slots failed:', err);
+          console.error(err);
           slotGrid.innerHTML = `<p class="error">Server error loading slots.</p>`;
         })
         .apiGetAvailableSlots(selectedType, slotsShown);
@@ -134,6 +121,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderSlots(slots) {
       slotGrid.innerHTML = '';
+      if (!slots.length) {
+        slotGrid.innerHTML = `<p>No available appointments found.</p>`;
+        return;
+      }
       slots.forEach(slot => {
         const card = document.createElement('div');
         card.className = 'card';
@@ -145,7 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <small style="opacity:0.6;">ID: ${slot.id}</small>
         `;
         card.addEventListener('click', () => {
-          selectedSlot = slot; // includes .id now
+          selectedSlot = slot;
           stepSlots.classList.add('hidden');
           stepForm.classList.remove('hidden');
           renderFormFields();
@@ -161,123 +152,84 @@ document.addEventListener('DOMContentLoaded', () => {
       fetchSlots();
     });
 
-    // ─── Step 3: Form ───────────────
-    // ─── Step 3: Client & Pet Form ──────────────
-  // ─── Step 3: Client & Pet Form ──────────────
-  function renderFormFields() {
-    const f = container.querySelector('#formFields');
-    f.innerHTML = `
-      <div class="field"><label>First Name</label><input type="text" id="firstName" required></div>
-      <div class="field"><label>Last Name</label><input type="text" id="lastName" required></div>
-      <div class="field"><label>Email</label><input type="email" id="email"></div>
-      <div class="field"><label>Phone</label><input type="tel" id="phone" placeholder="(###) ###-####" required></div>
+    // ──────────────────────────────
+    // Step 3: Client & Pet Form
+    // ──────────────────────────────
+    function renderFormFields() {
+      const f = container.querySelector('#formFields');
+      f.innerHTML = `
+        <div class="field"><label>First Name</label><input type="text" id="firstName" required></div>
+        <div class="field"><label>Last Name</label><input type="text" id="lastName" required></div>
+        <div class="field"><label>Email</label><input type="email" id="email"></div>
+        <div class="field"><label>Phone</label><input type="tel" id="phone" placeholder="(###) ###-####" required></div>
 
-      <hr style="margin:1rem 0; border:none; border-top:1px solid #e5e7eb;">
-      <h3>Address</h3>
-      <div class="field"><label>Street Address</label><input type="text" id="address"></div>
-      <div class="field"><label>City</label><input type="text" id="city"></div>
-      <div class="field">
-        <label>State</label>
-        <select id="state">
-          <option value="">— Select —</option>
-          <option>NY</option>
-          <option>PA</option>
-          <option>Other</option>
-        </select>
-      </div>
-      <div class="field"><label>ZIP Code</label><input type="text" id="zip" maxlength="10" pattern="\\d{5}(-\\d{4})?"></div>
+        <h3>Address</h3>
+        <div class="field"><label>Address</label><input type="text" id="address"></div>
+        <div class="field"><label>City</label><input type="text" id="city"></div>
+        <div class="field"><label>State</label><input type="text" id="state"></div>
+        <div class="field"><label>Zip Code</label><input type="text" id="zip"></div>
 
-      <hr style="margin:1rem 0; border:none; border-top:1px solid #e5e7eb;">
-      <h3>Pet Information</h3>
-      <div class="field"><label>Pet Name</label><input type="text" id="petName" required></div>
-      <div class="field">
-        <label>Species</label>
-        <select id="species" required>
-          <option value="">— Select —</option>
-          <option value="Canine">Canine</option>
-          <option value="Feline">Feline</option>
-          <option value="Other">Other</option>
-        </select>
-      </div>
-      <div class="field"><label>Primary Breed</label><input type="text" id="breedOne"></div>
-      <div class="field"><label>Secondary Breed</label><input type="text" id="breedTwo"></div>
-      <div class="field"><label>Color</label><input type="text" id="color"></div>
-      <div class="field"><label>Color Pattern</label><input type="text" id="colorPattern"></div>
-      <div class="field">
-        <label>Vaccines Needed</label>
-        <select id="vaccines">
-          <option value="">— Select Species First —</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Additional Services Needed</label>
-        <select id="additionalServices">
-          <option value="">— Select —</option>
-        </select>
-      </div>
+        <h3>Pet Information</h3>
+        <div class="field"><label>Pet Name</label><input type="text" id="petName" required></div>
+        <div class="field"><label>Species</label>
+          <select id="species" required>
+            <option value="">— Select —</option>
+            <option value="Canine">Canine</option>
+            <option value="Feline">Feline</option>
+          </select>
+        </div>
+        <div class="field"><label>Primary Breed</label><input type="text" id="breedOne"></div>
+        <div class="field"><label>Secondary Breed</label><input type="text" id="breedTwo"></div>
+        <div class="field"><label>Color</label><input type="text" id="color"></div>
+        <div class="field"><label>Color Pattern</label><input type="text" id="colorPattern"></div>
+        <div class="field"><label>Vaccines Needed</label><select id="vaccines"><option value="">— Select Species First —</option></select></div>
+        <div class="field"><label>Additional Services</label><select id="additionalServices"><option value="">— Select —</option></select></div>
+        <div class="field"><label><input type="checkbox" id="hasVetRecords"> Previous Vet Records?</label></div>
+        <div class="field"><label>Vet Office Name</label><input type="text" id="vetOffice"></div>
+      `;
 
-      <div class="field">
-        <label><input type="checkbox" id="hasVetRecords"> Previous Vet Records?</label>
-      </div>
+      const phoneInput = container.querySelector('#phone');
+      phoneInput.addEventListener('blur', () => {
+        const digits = phoneInput.value.replace(/\D/g, '');
+        if (digits.length === 10)
+          phoneInput.value = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+      });
 
-      <div class="field">
-        <label>Prior Veterinarian Office</label>
-        <input type="text" id="vetOffice">
-      </div>
-      <div class="field"><label>Approx. Weight (lbs)</label><input type="number" id="weight" min="0" step="0.1"></div>
-      <div class="field"><label>Additional Notes</label><textarea id="notes" rows="3" placeholder="Any special needs or concerns..."></textarea></div>
-    `;
+      // Dynamic vaccine lists
+      const speciesSelect = container.querySelector('#species');
+      const vaccineSelect = container.querySelector('#vaccines');
+      google.script.run.withSuccessHandler(res => {
+        if (res?.ok) {
+          const { canine, feline } = res;
+          speciesSelect.addEventListener('change', () => {
+            const val = speciesSelect.value;
+            const options =
+              val === 'Canine' ? canine : val === 'Feline' ? feline : [];
+            vaccineSelect.innerHTML =
+              options.length
+                ? `<option value="">— Select —</option>${options.map(v => `<option>${v}</option>`).join('')}`
+                : `<option value="">— No Vaccines Available —</option>`;
+          });
+        }
+      }).apiGetVaccineLists();
 
-    // --- Auto-format phone number on blur ---
-    const phoneInput = container.querySelector('#phone');
-    phoneInput.addEventListener('blur', () => {
-      const digits = phoneInput.value.replace(/\D/g, '');
-      if (digits.length === 10) {
-        phoneInput.value = `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
-      }
-    });
-
-    // --- Dynamic vaccines list based on species ---
-    const speciesSelect = container.querySelector('#species');
-    const vaccineSelect = container.querySelector('#vaccines');
-
-    // fetch vaccine lists from backend
-    google.script.run
-      .withSuccessHandler(res => {
-        if (!res || !res.ok) return;
-        const lists = { canine: res.canine || [], feline: res.feline || [] };
-
-        speciesSelect.addEventListener('change', () => {
-          const val = speciesSelect.value;
-          let options = [];
-          if (val === 'Canine') options = lists.canine;
-          else if (val === 'Feline') options = lists.feline;
-          else options = [];
-          vaccineSelect.innerHTML = options.length
-            ? `<option value="">— Select —</option>` + options.map(v => `<option>${v}</option>`).join('')
-            : `<option value="">— No Vaccines Available —</option>`;
-        });
-      })
-      .apiGetVaccineLists();
-    // --- Load Additional Services from backend ---
-    google.script.run
-      .withSuccessHandler(res => {
-        if (!res || !res.ok) return;
-        const select = container.querySelector('#additionalServices');
-        select.innerHTML =
-          `<option value="">— Select —</option>` +
-          res.services.map(s => `<option>${s}</option>`).join('');
-      })
-      .apiGetAdditionalServices();
+      google.script.run.withSuccessHandler(res => {
+        if (res?.ok) {
+          const select = container.querySelector('#additionalServices');
+          select.innerHTML = `<option value="">— Select —</option>${res.services.map(s => `<option>${s}</option>`).join('')}`;
+        }
+      }).apiGetAdditionalServices();
     }
 
-    // ─── Step 4: Continue / Book ───────────────
     continueBtn.addEventListener('click', showTransportModal);
 
     function scrollTop() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
+    // ──────────────────────────────
+    // Step 4: Transport & Vet Records Modal
+    // ──────────────────────────────
     function showTransportModal() {
       const hasVetRecords = container.querySelector('#hasVetRecords').checked;
       const firstName = container.querySelector('#firstName').value.trim();
@@ -287,117 +239,86 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const modal = document.createElement('div');
       modal.className = 'modal';
-
-      let inner = `
+      modal.innerHTML = `
         <div class="modal-content">
           <p>Does this client require transportation assistance for this appointment?</p>
           <div class="actions">
             <button class="btn" data-transport="Yes">Yes</button>
             <button class="btn secondary" data-transport="No">No</button>
           </div>
+          ${hasVetRecords ? `
+            <hr>
+            <p>You indicated the client has previous veterinary records. Upload them now or send a request link.</p>
+            <div class="actions">
+              <input type="file" id="recordsUpload" multiple style="display:none;" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
+              <button id="uploadBtn" class="btn">Upload Previous Records</button>
+              <button id="sendRequestBtn" class="btn secondary">Send Record Request</button>
+            </div>
+            <div id="uploadList" class="upload-list"></div>
+          ` : ''}
+        </div>
       `;
-
-      if (hasVetRecords) {
-        inner += `
-          <hr>
-          <p>You indicated the client has previous veterinary records for this pet. If you have them now, please upload. 
-          If not, choose “Send Record Request” to email the client an upload link.</p>
-          <div class="actions">
-            <input type="file" id="recordsUpload" multiple style="display:none;" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
-            <button id="uploadBtn" class="btn">Upload Previous Records</button>
-            <button id="sendRequestBtn" class="btn secondary">Send Record Request</button>
-          </div>
-          <div id="uploadList" class="upload-list"></div>
-        `;
-      }
-
-      inner += `</div>`;
-      modal.innerHTML = inner;
       document.body.appendChild(modal);
 
-      // ─── Transport buttons ─────────────────────────────────────────
       modal.querySelectorAll('button[data-transport]').forEach(btn => {
         btn.addEventListener('click', () => {
-          const transport = btn.dataset.transport;
-          modal.dataset.transport = transport;
+          modal.dataset.transport = btn.dataset.transport;
           if (!hasVetRecords) {
             modal.remove();
-            bookAppointment(transport);
+            bookAppointment(modal.dataset.transport);
           }
         });
       });
 
-      // ─── Upload Records Handler ─────────────────────────────────────
+      // Upload records
       const uploadBtn = modal.querySelector('#uploadBtn');
       if (uploadBtn) {
         uploadBtn.addEventListener('click', () => {
           const input = modal.querySelector('#recordsUpload');
           input.click();
-
           input.onchange = () => {
             const files = [...input.files];
             if (!files.length) return;
-
-            // Create folder before uploading
-            google.script.run
-              .withSuccessHandler(res => {
-                if (!res.ok) return alert('Error creating folder.');
-                const uploadList = modal.querySelector('#uploadList');
-                uploadList.innerHTML = '';
-
-                let completed = 0;
-                files.forEach(file => {
-                  const row = document.createElement('div');
-                  row.className = 'upload-item';
-                  row.innerHTML = `<span>${file.name}</span> <span class="spinner small"></span>`;
-                  uploadList.appendChild(row);
-
-                  const reader = new FileReader();
-                  reader.onload = e => {
-                    const base64 = e.target.result.split(',')[1];
-                    google.script.run
-                      .withSuccessHandler(() => {
-                        completed++;
-                        row.innerHTML = `<span>${file.name}</span> <span class="status success">✅</span>`;
-                        if (completed === files.length) {
-                          alert('All files uploaded successfully!');
-                          modal.remove();
-                          bookAppointment(modal.dataset.transport);
-                        }
-                      })
-                      .withFailureHandler(err => {
-                        row.innerHTML = `<span>${file.name}</span> <span class="status error">❌ ${err}</span>`;
-                      })
-                      .apiUploadVetRecord(file.name, base64, res.folderId);
-                  };
-                  reader.readAsDataURL(file);
-                });
-              })
-              .apiCreateVetRecordsFolder(firstName, lastName, petName, clientEmail);
+            google.script.run.withSuccessHandler(res => {
+              if (!res.ok) return alert('Error creating folder.');
+              const uploadList = modal.querySelector('#uploadList');
+              uploadList.innerHTML = '';
+              files.forEach(file => {
+                const row = document.createElement('div');
+                row.innerHTML = `${file.name} <span class="spinner small"></span>`;
+                uploadList.appendChild(row);
+                const reader = new FileReader();
+                reader.onload = e => {
+                  const base64 = e.target.result.split(',')[1];
+                  google.script.run.withSuccessHandler(() => {
+                    row.innerHTML = `${file.name} ✅`;
+                  }).apiUploadVetRecord(file.name, base64, res.folderId);
+                };
+                reader.readAsDataURL(file);
+              });
+            }).apiCreateVetRecordsFolder(firstName, lastName, petName, clientEmail);
           };
         });
       }
 
-      // ─── Send Records Request Handler ───────────────────────────────
       const sendBtn = modal.querySelector('#sendRequestBtn');
       if (sendBtn) {
         sendBtn.addEventListener('click', () => {
-          google.script.run
-            .withSuccessHandler(res => {
-              if (!res.ok) return alert('Error creating folder.');
-              google.script.run
-                .withSuccessHandler(() => {
-                  alert('Upload link sent to client!');
-                  modal.remove();
-                  bookAppointment(modal.dataset.transport);
-                })
-                .apiSendVetRecordsRequest(clientEmail, res.url, firstName, petName);
-            })
-            .apiCreateVetRecordsFolder(firstName, lastName, petName, clientEmail);
+          google.script.run.withSuccessHandler(res => {
+            if (!res.ok) return alert('Error creating folder.');
+            google.script.run.withSuccessHandler(() => {
+              alert('Upload link sent!');
+              modal.remove();
+              bookAppointment(modal.dataset.transport);
+            }).apiSendVetRecordsRequest(clientEmail, res.url, firstName, petName);
+          }).apiCreateVetRecordsFolder(firstName, lastName, petName, clientEmail);
         });
       }
     }
 
+    // ──────────────────────────────
+    // Step 5: Book Appointment
+    // ──────────────────────────────
     function bookAppointment(transport) {
       stepForm.classList.add('hidden');
       stepConfirm.classList.remove('hidden');
@@ -407,10 +328,10 @@ document.addEventListener('DOMContentLoaded', () => {
         'Last Name': container.querySelector('#lastName').value.trim(),
         'Email': container.querySelector('#email').value.trim(),
         'Phone': container.querySelector('#phone').value.trim(),
-        'Street Address': container.querySelector('#address').value.trim(),
+        'Address': container.querySelector('#address').value.trim(),
         'City': container.querySelector('#city').value.trim(),
         'State': container.querySelector('#state').value.trim(),
-        'ZIP': container.querySelector('#zip').value.trim(),
+        'Zip Code': container.querySelector('#zip').value.trim(),
         'Pet Name': container.querySelector('#petName').value.trim(),
         'Species': container.querySelector('#species').value.trim(),
         'Breed One': container.querySelector('#breedOne').value.trim(),
@@ -418,22 +339,16 @@ document.addEventListener('DOMContentLoaded', () => {
         'Color': container.querySelector('#color').value.trim(),
         'Color Pattern': container.querySelector('#colorPattern').value.trim(),
         'Vaccines Needed': container.querySelector('#vaccines').value.trim(),
-        'Weight': container.querySelector('#weight').value.trim(),
-        'Notes': container.querySelector('#notes').value.trim(),
-        'Transportation Required': transport
         'Additional Services': container.querySelector('#additionalServices').value.trim(),
         'Previous Vet Records': container.querySelector('#hasVetRecords').checked ? 'Yes' : 'No',
         'Vet Office Name': container.querySelector('#vetOffice').value.trim(),
+        'Transportation Required': transport
       };
 
       google.script.run
         .withSuccessHandler(res => {
-          if (!res) {
-            stepConfirm.innerHTML = `<p class="error">No response from server.</p>`;
-            return;
-          }
-          if (!res.ok) {
-            stepConfirm.innerHTML = `<p class="error">Booking failed: ${res.error || 'Unknown error'}</p>`;
+          if (!res || !res.ok) {
+            stepConfirm.innerHTML = `<p class="error">Booking failed: ${res?.error || 'Unknown error'}</p>`;
             return;
           }
           showConfirmation();
@@ -442,21 +357,18 @@ document.addEventListener('DOMContentLoaded', () => {
           console.error('Booking failed:', err);
           stepConfirm.innerHTML = `<p class="error">Server error booking appointment.</p>`;
         })
-        .apiBookAppointment(payload, selectedSlot.id);
+        .apiBookAppointment(payload, selectedType, selectedSlot.date, selectedSlot.time, selectedSlot.id);
     }
 
     function showConfirmation() {
       stepConfirm.innerHTML = `
         <h2>Appointment Booked!</h2>
         <div class="actions">
-          <button id="bookAnotherBtn" class="btn">Book another for this client</button>
+          <button id="bookAnotherBtn" class="btn">Book another</button>
           <button id="doneBtn" class="btn secondary">Done</button>
         </div>
       `;
-      container.querySelector('#bookAnotherBtn').addEventListener('click', () => {
-        renderScheduleFlow(container);
-        scrollTop();
-      });
+      container.querySelector('#bookAnotherBtn').addEventListener('click', () => renderScheduleFlow(container));
       container.querySelector('#doneBtn').addEventListener('click', () => backBtn.click());
     }
   }
