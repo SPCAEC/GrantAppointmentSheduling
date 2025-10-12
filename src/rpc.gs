@@ -141,25 +141,32 @@ function apiCreateVetRecordsFolder(firstName, lastName, petName, clientEmail) {
     const parent = DriveApp.getFolderById(PARENT_ID);
     const folderName = `${lastName}_${firstName}_${petName}`.replace(/[^\w\s-]/g, '_');
 
-    // Check if folder already exists
+    // Check if folder already exists under parent
     const existing = parent.getFoldersByName(folderName);
     const folder = existing.hasNext() ? existing.next() : parent.createFolder(folderName);
 
-    // Set permissions (limited to Outreach + client)
+    // ─── Permissions ──────────────────────────────
     try {
-      folder.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
+      // Outreach editors always have access
       folder.addEditor('yourspcaoutreachteam@gmail.com');
-      if (clientEmail) folder.addViewer(clientEmail);
+
+      // Allow uploads and access without login (client + anyone with link)
+      folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDITOR);
+
+      // Optionally add client email directly if they’re signed into Google
+      if (clientEmail) folder.addEditor(clientEmail);
+
     } catch (e) {
       Logger.log('Permission warning: ' + e.message);
     }
 
     return { ok: true, folderId: folder.getId(), url: folder.getUrl() };
+
   } catch (err) {
     Logger.log('apiCreateVetRecordsFolder() ERROR: ' + err);
     return { ok: false, error: err.message };
   }
-}
+}dd
 
 
 /**

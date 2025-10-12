@@ -251,7 +251,7 @@ document.addEventListener('DOMContentLoaded', () => {
             vaccineList.innerHTML = options.length
               ? options.map(v => `
                   <label class="radio-option">
-                    <input type="radio" name="vaccine" value="${v}"> ${v}
+                    <input type="checkbox" name="vaccine" value="${v}">
                   </label>
                 `).join('')
               : `<p style="opacity:.6;">— No Vaccines Available —</p>`;
@@ -266,7 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const containerEl = container.querySelector('#additionalServices');
           containerEl.innerHTML = res.services.map(s => `
             <label class="radio-option">
-              <input type="radio" name="service" value="${s}"> ${s}
+              <input type="checkbox" name="service" value="${s}">
             </label>
           `).join('');
         })
@@ -323,6 +323,10 @@ document.addEventListener('DOMContentLoaded', () => {
       // ─── Transport Buttons ────────────────────────────
       modal.querySelectorAll('button[data-transport]').forEach(btn => {
         btn.addEventListener('click', () => {
+          // highlight selected button
+          modal.querySelectorAll('button[data-transport]').forEach(b => b.classList.remove('selected'));
+          btn.classList.add('selected');
+
           const transport = btn.dataset.transport;
           modal.dataset.transport = transport;
 
@@ -429,8 +433,8 @@ document.addEventListener('DOMContentLoaded', () => {
         'Breed Two': container.querySelector('#breedTwo').value.trim(),
         'Color': container.querySelector('#color').value.trim(),
         'Color Pattern': container.querySelector('#colorPattern').value.trim(),
-        'Vaccines Needed': container.querySelector('input[name="vaccine"]:checked')?.value || '',
-        'Additional Services': container.querySelector('input[name="service"]:checked')?.value || '',
+        'Vaccines Needed': [...container.querySelectorAll('input[name="vaccine"]:checked')].map(el => el.value).join(', '),
+        'Additional Services': [...container.querySelectorAll('input[name="service"]:checked')].map(el => el.value).join(', '),
         'Weight': container.querySelector('#weight').value.trim(),
         'Notes': container.querySelector('#notes').value.trim(),
         'Previous Vet Records': container.querySelector('input[name="hasVetRecords"]:checked')?.value || 'No',
