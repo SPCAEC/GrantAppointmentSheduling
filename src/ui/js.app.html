@@ -209,6 +209,21 @@ document.addEventListener('DOMContentLoaded', () => {
           <option value="">— Select Species First —</option>
         </select>
       </div>
+      <div class="field">
+        <label>Additional Services Needed</label>
+        <select id="additionalServices">
+          <option value="">— Select —</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label><input type="checkbox" id="hasVetRecords"> Previous Vet Records?</label>
+      </div>
+
+      <div class="field">
+        <label>Prior Veterinarian Office</label>
+        <input type="text" id="vetOffice">
+      </div>
       <div class="field"><label>Approx. Weight (lbs)</label><input type="number" id="weight" min="0" step="0.1"></div>
       <div class="field"><label>Additional Notes</label><textarea id="notes" rows="3" placeholder="Any special needs or concerns..."></textarea></div>
     `;
@@ -244,7 +259,17 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       })
       .apiGetVaccineLists();
-  }
+    // --- Load Additional Services from backend ---
+    google.script.run
+      .withSuccessHandler(res => {
+        if (!res || !res.ok) return;
+        const select = container.querySelector('#additionalServices');
+        select.innerHTML =
+          `<option value="">— Select —</option>` +
+          res.services.map(s => `<option>${s}</option>`).join('');
+      })
+      .apiGetAdditionalServices();
+    }
 
     // ─── Step 4: Continue / Book ───────────────
     continueBtn.addEventListener('click', showTransportModal);
@@ -254,26 +279,100 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showTransportModal() {
+      const hasVetRecords = container.querySelector('#hasVetRecords').checked;
+      const firstName = container.querySelector('#firstName').value.trim();
+      const lastName = container.querySelector('#lastName').value.trim();
+      const petName = container.querySelector('#petName').value.trim();
+      const clientEmail = container.querySelector('#email').value.trim();
+
       const modal = document.createElement('div');
       modal.className = 'modal';
-      modal.innerHTML = `
+
+      let inner = `
         <div class="modal-content">
           <p>Does this client require transportation assistance for this appointment?</p>
           <div class="actions">
-            <button class="btn" data-answer="Yes">Yes</button>
-            <button class="btn secondary" data-answer="No">No</button>
+            <button class="btn" data-transport="Yes">Yes</button>
+            <button class="btn secondary" data-transport="No">No</button>
           </div>
-        </div>
       `;
+
+      if (hasVetRecords) {
+        inner += `
+          <hr>
+          <p>You indicated the client has previous veterinary records for this pet. If you have them now, please upload. If not, choose “Send Record Request” to email the client an upload link.</p>
+          <div class="actions">
+            <input type="file" id="recordsUpload" multiple style="display:none;" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
+            <button id="uploadBtn" class="btn">Upload Previous Records</button>
+            <button id="sendRequestBtn" class="btn secondary">Send Record Request</button>
+          </div>
+        `;
+      }
+
+      inner += `</div>`;
+      modal.innerHTML = inner;
       document.body.appendChild(modal);
 
-      modal.querySelectorAll('button').forEach(btn => {
+      // Transport button handlers
+      modal.querySelectorAll('button[data-transport]').forEach(btn => {
         btn.addEventListener('click', () => {
-          const transport = btn.dataset.answer;
-          modal.remove();
-          bookAppointment(transport);
+          const transport = btn.dataset.transport;
+          modal.dataset.transport = transport;
+          if (!hasVetRecords) {
+            modal.remove();
+            bookAppointment(transport);
+          }
         });
       });
+
+      // Vet record upload
+      const uploadBtn = modal.querySelector('#uploadBtn');
+      if (uploadBtn) {
+        uploadBtn.addEventListener('click', () => {
+          google.script.run
+            .withSuccessHandler(res => {
+              if (!res.ok) return alert('Error creating folder.');
+              const input = modal.querySelector('#recordsUpload');
+              input.click();
+              input.onchange = () => {
+                const files = [...input.files];
+                files.forEach(file => {
+                  const reader = new FileReader();
+                  reader.onload = e => {
+                    const base64 = e.target.result.split(',')[1];
+                    google.script.run
+                      .withFailureHandler(err => alert('Upload failed: ' + err))
+                      .apiUploadVetRecord(file.name, base64, res.folderId);
+                  };
+                  reader.readAsDataURL(file);
+                });
+                alert('Files uploaded successfully!');
+                modal.remove();
+                bookAppointment(modal.dataset.transport);
+              };
+            })
+            .apiCreateVetRecordsFolder(firstName, lastName, petName, clientEmail);
+        });
+      }
+
+      // Vet record email request
+      const sendBtn = modal.querySelector('#sendRequestBtn');
+      if (sendBtn) {
+        sendBtn.addEventListener('click', () => {
+          google.script.run
+            .withSuccessHandler(res => {
+              if (!res.ok) return alert('Error creating folder.');
+              google.script.run
+                .withSuccessHandler(() => {
+                  alert('Upload link sent to client!');
+                  modal.remove();
+                  bookAppointment(modal.dataset.transport);
+                })
+                .apiSendVetRecordsRequest(clientEmail, res.url, firstName, petName);
+            })
+            .apiCreateVetRecordsFolder(firstName, lastName, petName, clientEmail);
+        });
+      }
     }
 
     function bookAppointment(transport) {
@@ -299,6 +398,9 @@ document.addEventListener('DOMContentLoaded', () => {
         'Weight': container.querySelector('#weight').value.trim(),
         'Notes': container.querySelector('#notes').value.trim(),
         'Transportation Required': transport
+        'Additional Services': container.querySelector('#additionalServices').value.trim(),
+        'Previous Vet Records': container.querySelector('#hasVetRecords').checked ? 'Yes' : 'No',
+        'Vet Office Name': container.querySelector('#vetOffice').value.trim(),
       };
 
       google.script.run
