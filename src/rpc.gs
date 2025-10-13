@@ -172,23 +172,36 @@ function apiCreateVetRecordsFolder(firstName, lastName, petName, clientEmail) {
 }
 
 /**
- * Sends vet records upload email with folder link.
+ * Sends vet records upload email using the central upload web app link.
+ * The link is stored in Script Properties under key RECORD_UPLOAD_LINK.
  */
 function apiSendVetRecordsRequest(clientEmail, folderUrl, firstName, petName) {
   try {
-    if (!clientEmail) throw new Error('Missing client email');
+    if (!clientEmail) return { ok: false, error: 'Missing client email' };
+
+    // Get the upload link from script properties
+    const props = PropertiesService.getScriptProperties();
+    const uploadLink = props.getProperty('RECORD_UPLOAD_LINK');
+
+    if (!uploadLink) {
+      throw new Error('Missing Script Property: RECORD_UPLOAD_LINK');
+    }
+
     const subject = `Upload Veterinary Records for ${petName}`;
     const body = `
 Hello ${firstName},
 
 You can securely upload your previous veterinary records for ${petName} using the link below:
 
-${folderUrl}
+${uploadLink}
+
+Please ensure that you include all relevant pages or photos. Your records will be kept secure and used only for your pet’s care.
 
 If you have any questions, please reply to this email or contact the SPCA Outreach Team.
 
 — SPCA Serving Erie County Outreach Team
 `;
+
     MailApp.sendEmail({
       to: clientEmail,
       name: 'SPCA Outreach Team',
@@ -196,10 +209,12 @@ If you have any questions, please reply to this email or contact the SPCA Outrea
       subject,
       body
     });
-    Logger.log(`apiSendVetRecordsRequest() sent → ${clientEmail}`);
+
+    Logger.log(`Vet record upload email sent to ${clientEmail} for ${petName}.`);
     return { ok: true };
+
   } catch (err) {
-    Logger.log('apiSendVetRecordsRequest() ERROR: ' + err + '\n' + err.stack);
+    Logger.log('apiSendVetRecordsRequest() ERROR: ' + err);
     return { ok: false, error: err.message };
   }
 }

@@ -454,39 +454,37 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       }
 
-      // Send Records Request
-      const sendBtn = modal.querySelector('#sendRequestBtn');
-      if (sendBtn) {
-        sendBtn.addEventListener('click', () => {
-          if (!modal.dataset.transport) {
-            setToast('Please select Transportation (Yes or No) first.');
-            return;
-          }
-          sendBtn.classList.add('loading');
-          google.script.run
-            .withSuccessHandler(res => {
-              if (!res.ok) { setToast('Error creating folder.', 'error'); sendBtn.classList.remove('loading'); return; }
-              google.script.run
-                .withSuccessHandler(() => {
-                  sendBtn.classList.remove('loading');
-                  setToast('Upload link sent to client!', 'success');
-                  setTimeout(() => { modal.remove(); bookAppointment(modal.dataset.transport); }, 600);
-                })
-                .withFailureHandler(err => {
-                  sendBtn.classList.remove('loading');
-                  setToast('Failed to send email.', 'error');
-                  console.error(err);
-                })
-                .apiSendVetRecordsRequest(clientEmail, res.url, firstName, petName);
-            })
-            .withFailureHandler(err => {
-              sendBtn.classList.remove('loading');
-              setToast('Error preparing request.', 'error');
-              console.error(err);
-            })
-            .apiCreateVetRecordsFolder(firstName, lastName, petName, clientEmail);
-        });
-      }
+      // Send Records Request — simplified (no folder creation)
+        const sendBtn = modal.querySelector('#sendRequestBtn');
+        if (sendBtn) {
+          sendBtn.addEventListener('click', () => {
+            if (!modal.dataset.transport) {
+              setToast('Please select Transportation (Yes or No) first.');
+              return;
+            }
+            sendBtn.classList.add('loading');
+
+            google.script.run
+              .withSuccessHandler(res => {
+                sendBtn.classList.remove('loading');
+                if (!res.ok) {
+                  setToast(res.error || 'Error sending email.', 'error');
+                  return;
+                }
+                setToast('Upload link sent to client!', 'success');
+                setTimeout(() => {
+                  modal.remove();
+                  bookAppointment(modal.dataset.transport);
+                }, 600);
+              })
+              .withFailureHandler(err => {
+                sendBtn.classList.remove('loading');
+                setToast('Failed to send email.', 'error');
+                console.error(err);
+              })
+              .apiSendVetRecordsRequest(clientEmail, '', firstName, petName);
+          });
+        }
     }
 
     // ──────────────────────────────
