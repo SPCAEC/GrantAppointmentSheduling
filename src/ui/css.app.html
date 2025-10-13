@@ -353,10 +353,27 @@ p.error {
 }
 
 /* ───────── Transport button highlight ───────── */
-.modal .btn.transportBtn.selected {
+/* ───────── Transport modal button highlight (improved visibility) ───────── */
+.modal .btn[data-transport] {
+  background: #f1f5f9; /* light neutral base so both visible */
+  color: #111827;
+  border: 1px solid #cbd5e1;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+
+.modal .btn[data-transport]:hover {
+  background: #e0f2fe;
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+
+/* When selected */
+.modal .btn[data-transport].selected {
   background: var(--accent);
-  color: #fff;
-  box-shadow: 0 0 0 2px #bae6fd;
+  color: #ffffff;
+  border-color: var(--accent-hover);
+  box-shadow: 0 0 0 3px #bae6fd;
+  font-weight: 600;
 }
 
 /* ───────── Small helpers ───────── */
