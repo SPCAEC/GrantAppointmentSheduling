@@ -128,8 +128,8 @@ function updateAppointmentRow_(rowIndex, data) {
   const normalizedData = {};
   Object.keys(data || {}).forEach(k => {
     let key = k;
-    if (/zip code/i.test(k)) key = 'ZIP';
-    if (/address/i.test(k)) key = 'Street Address';
+    if (/zip code/i.test(k)) key = 'Zip Code';
+    if (/address/i.test(k)) key = 'Address';
     normalizedData[key] = data[k];
   });
 
