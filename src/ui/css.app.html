@@ -106,10 +106,11 @@ body {
   color: #111827;
 }
 
-/* Spinner inline for buttons */
+/* Loading spinner inside buttons */
 .btn.loading {
   pointer-events: none;
-  opacity: 0.8;
+  opacity: 0.85;
+  position: relative;
 }
 
 .btn.loading::after {
@@ -120,11 +121,12 @@ body {
   border-top-color: white;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
+  position: absolute;
+  right: 0.75rem;
 }
 
 /* ───────── Layout Steps ───────── */
 .sub-view { min-height: 400px; }
-
 .schedule-step { display: grid; gap: 1.25rem; }
 
 .option-buttons {
@@ -222,15 +224,8 @@ input:focus, select:focus, textarea:focus {
   margin-bottom: 1rem;
 }
 
-.modal .actions {
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-
-.modal .btn,
-.modal .btn.secondary {
-  min-width: 150px;
-}
+.modal .actions { flex-wrap: wrap; gap: 0.75rem; }
+.modal .btn, .modal .btn.secondary { min-width: 150px; }
 
 /* ───────── Divider ───────── */
 hr, .divider {
@@ -285,9 +280,7 @@ hr, .divider {
   transition: background 0.2s ease;
 }
 
-.upload-item:hover {
-  background: #f1f5f9;
-}
+.upload-item:hover { background: #f1f5f9; }
 
 /* ───────── Status Styles ───────── */
 .status.success, .status.error { font-weight: 600; }
@@ -315,14 +308,10 @@ p.error {
   background: #dcfce7;
   padding: 0.8rem 1rem;
   border-radius: var(--radius);
+  text-align: center;
+  margin-top: 0.75rem;
 }
 
-/* ───────── Mobile Adjustments ───────── */
-@media (max-width: 600px) {
-  .app { padding: 1rem; }
-  .btn { width: 100%; font-size: 1rem; }
-  .actions { flex-direction: column; gap: 0.75rem; }
-}
 /* ───────── Option Lists (Vaccines / Additional Services) ───────── */
 .option-list {
   display: grid;
@@ -339,8 +328,8 @@ p.error {
   line-height: 1.4;
 }
 
-.radio-option input[type="radio"],
-.radio-option input[type="checkbox"] {
+.radio-option input[type="checkbox"],
+.radio-option input[type="radio"] {
   width: 18px;
   height: 18px;
   accent-color: var(--accent);
@@ -348,39 +337,36 @@ p.error {
 }
 
 /* ───────── Align Yes/No Buttons Left ───────── */
-.field .option-buttons {
+.option-buttons-left {
   display: flex;
-  justify-content: flex-start; /* previously centered */
+  justify-content: flex-start;
   align-items: center;
-  gap: 1.5rem;
+  gap: 1.25rem;
   margin-top: 0.25rem;
 }
 
-.field .option-buttons label {
+.option-buttons-left label {
   display: flex;
   align-items: center;
   gap: 0.4rem;
   font-size: 1rem;
 }
 
-/* ───────── Slight visual polish for spacing consistency ───────── */
-.field label {
-  font-weight: 500;
-  margin-bottom: 0.1rem;
-}
-
-.field h3 {
-  margin-top: 1.25rem;
-}
-/* Transport modal button highlight */
-.modal .btn[data-transport].selected {
+/* ───────── Transport button highlight ───────── */
+.modal .btn.transportBtn.selected {
   background: var(--accent);
-  color: white;
+  color: #fff;
   box-shadow: 0 0 0 2px #bae6fd;
 }
 
-.modal .btn[data-transport].secondary.selected {
-  background: #dbeafe;
-  color: var(--text);
+/* ───────── Small helpers ───────── */
+.field label { font-weight: 500; margin-bottom: 0.1rem; }
+.field h3 { margin-top: 1.25rem; }
+
+/* ───────── Mobile Adjustments ───────── */
+@media (max-width: 600px) {
+  .app { padding: 1rem; }
+  .btn { width: 100%; font-size: 1rem; }
+  .actions { flex-direction: column; gap: 0.75rem; }
 }
 </style>

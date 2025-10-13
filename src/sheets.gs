@@ -1,7 +1,11 @@
 /**
  * Grant Appointment Scheduling — Sheet Helpers
+ * Adds flexible column resolution + address normalization
  */
 
+/**
+ * Get the target sheet from CFG
+ */
 function getSheet_() {
   const ss = SpreadsheetApp.openById(CFG.SHEET_ID);
   const sheet =
@@ -9,6 +13,47 @@ function getSheet_() {
     ss.getSheetByName(CFG.SHEET_NAME);
   if (!sheet) throw new Error('Appointments sheet not found.');
   return sheet;
+}
+
+/**
+ * Returns a normalized header→index map for defensive column access.
+ */
+function getHeaderMap_(sh) {
+  const headers = sh.getRange(1, 1, 1, sh.getLastColumn())
+    .getValues()[0]
+    .map(h => String(h).trim());
+  const map = {};
+  headers.forEach((h, i) => {
+    map[h.toLowerCase()] = i; // lowercase keys for safe lookup
+  });
+  return { headers, map };
+}
+
+/**
+ * Flexible lookup for a column index by friendly name (case/alias-insensitive)
+ */
+function getColIndexByName_(headers, name) {
+  const aliases = {
+    'zip': ['zip', 'zip code', 'postal code'],
+    'address': ['address', 'street address', 'street'],
+    'phone': ['phone', 'phone number'],
+    'state': ['state', 'st'],
+    'city': ['city', 'town']
+  };
+
+  const normalized = name.toLowerCase().trim();
+  let idx = headers.findIndex(h => h.toLowerCase() === normalized);
+  if (idx !== -1) return idx;
+
+  for (const [key, list] of Object.entries(aliases)) {
+    if (list.includes(normalized)) {
+      for (const alias of list) {
+        const found = headers.findIndex(h => h.toLowerCase() === alias);
+        if (found !== -1) return found;
+      }
+    }
+  }
+  return -1;
 }
 
 /**
@@ -20,13 +65,9 @@ function readAllAppointments_() {
   if (!data || data.length < 2) throw new Error('No data found in sheet.');
 
   const headers = data.shift().map(h => String(h).trim());
-  if (!headers.length) throw new Error('No headers found in sheet.');
-
   const objects = data.map(row => {
     const obj = {};
-    headers.forEach((h, i) => {
-      if (h) obj[h] = row[i];
-    });
+    headers.forEach((h, i) => (h ? (obj[h] = row[i]) : null));
     return obj;
   });
 
@@ -36,8 +77,6 @@ function readAllAppointments_() {
 
 /**
  * Returns next available slots for a given appointment type.
- * @param {string} type - 'Surgery' or 'Wellness'
- * @param {number} limit - number of results
  */
 function getAvailableSlots_(type, limit) {
   Logger.log(`getAvailableSlots_: Searching for type=${type}, limit=${limit}`);
@@ -48,9 +87,8 @@ function getAvailableSlots_(type, limit) {
     String(r[CFG.COLS.STATUS]).toLowerCase() === 'available'
   );
 
-  // Normalize for safe serialization + include Appointment ID
   const normalized = avail.map(r => ({
-    [CFG.COLS.ID]: String(r[CFG.COLS.ID] || ''), // new
+    [CFG.COLS.ID]: String(r[CFG.COLS.ID] || ''),
     [CFG.COLS.DAY]: String(r[CFG.COLS.DAY] || ''),
     [CFG.COLS.DATE]:
       r[CFG.COLS.DATE] instanceof Date
@@ -67,9 +105,7 @@ function getAvailableSlots_(type, limit) {
     [CFG.COLS.STATUS]: String(r[CFG.COLS.STATUS] || '')
   }));
 
-  normalized.sort(
-    (a, b) => new Date(a[CFG.COLS.DATE]) - new Date(b[CFG.COLS.DATE])
-  );
+  normalized.sort((a, b) => new Date(a[CFG.COLS.DATE]) - new Date(b[CFG.COLS.DATE]));
   const sliced = normalized.slice(0, limit);
 
   Logger.log(`getAvailableSlots_: Returning ${sliced.length} available slots`);
@@ -78,26 +114,35 @@ function getAvailableSlots_(type, limit) {
 
 /**
  * Updates a specific appointment row by index with new data.
- * @param {number} rowIndex - 1-based row index in sheet
- * @param {Object} data - key:value pairs to update
  */
 function updateAppointmentRow_(rowIndex, data) {
   const sh = getSheet_();
-  const headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(h => String(h).trim());
-  const existingRow = sh.getRange(rowIndex, 1, 1, headers.length).getValues()[0];
+  const { headers } = getHeaderMap_(sh);
+  const lastCol = headers.length;
 
-  const updatedRow = existingRow.slice(); // clone before mutate
+  // Read the current row
+  const existingRow = sh.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
+  const updatedRow = existingRow.slice();
 
-  headers.forEach((h, i) => {
-    if (data[h] !== undefined) updatedRow[i] = data[h];
+  // Normalize Address/Zip aliases if needed
+  const normalizedData = {};
+  Object.keys(data || {}).forEach(k => {
+    let key = k;
+    if (/zip code/i.test(k)) key = 'ZIP';
+    if (/address/i.test(k)) key = 'Street Address';
+    normalizedData[key] = data[k];
   });
 
-  // Optional timestamp support if column exists
+  headers.forEach((h, i) => {
+    if (normalizedData[h] !== undefined) updatedRow[i] = normalizedData[h];
+  });
+
+  // Optional timestamp
   if (CFG.COLS.UPDATED_AT && headers.includes(CFG.COLS.UPDATED_AT)) {
     const idx = headers.indexOf(CFG.COLS.UPDATED_AT);
     updatedRow[idx] = new Date();
   }
 
-  sh.getRange(rowIndex, 1, 1, headers.length).setValues([updatedRow]);
+  sh.getRange(rowIndex, 1, 1, lastCol).setValues([updatedRow]);
   Logger.log(`updateAppointmentRow_: Updated row ${rowIndex}`);
 }
