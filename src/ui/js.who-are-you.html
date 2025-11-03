@@ -1,0 +1,61 @@
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const { mainMenu, header, sectionTitle, views } = window.SPCA;
+
+  const SCHEDULER_KEY = 'gap_scheduler_v1';
+  function setSchedulerName(name){ sessionStorage.setItem(SCHEDULER_KEY, name || ''); }
+  function getSchedulerName(){ return sessionStorage.getItem(SCHEDULER_KEY) || ''; }
+
+  // Make globally available to other modules
+  window.setSchedulerName = setSchedulerName;
+  window.getSchedulerName = getSchedulerName;
+
+  const originalOpenView = window.openView;
+  window.openView = (view) => {
+    if (view === 'schedule' && !getSchedulerName()) {
+      showWhoAreYouScreen();
+      return;
+    }
+    originalOpenView(view);
+  };
+
+  function showWhoAreYouScreen() {
+    mainMenu.classList.add('hidden');
+    header.classList.remove('hidden');
+    sectionTitle.textContent = 'Who are you?';
+    views.forEach(v => v.classList.add('hidden'));
+
+    const container = document.querySelector('#view-schedule');
+    container.classList.remove('hidden');
+    container.innerHTML = `
+      <div class="who-screen">
+        <img src="https://drive.google.com/uc?export=view&id=1OZEKg1s60yAaBn0OSwcoFB3XMsI8HMTE"
+             alt="Caterpillar from Alice in Wonderland" class="who-image">
+        <h2>"Who are you?"</h2>
+        <div class="who-buttons">
+          <button class="btn" data-name="Nathan">Nathan</button>
+          <button class="btn" data-name="Tyler">Tyler</button>
+          <button class="btn" data-name="Amy">Amy</button>
+          <button class="btn" data-name="Dasha">Dasha</button>
+          <button class="btn secondary" data-name="Mystery Person">Mystery Person</button>
+        </div>
+      </div>
+    `;
+
+    container.querySelectorAll('.who-buttons .btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        setSchedulerName(btn.dataset.name);
+        container.innerHTML = `<div class="spinner"></div>`;
+        setTimeout(() => window.openView('schedule'), 250);
+      });
+    });
+  }
+});
+</script>
+
+<style>
+.who-screen { text-align:center; padding:2rem 1rem; }
+.who-image { max-width:280px; width:80%; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.2); margin-bottom:1.2rem; }
+.who-buttons { display:flex; flex-direction:column; align-items:center; gap:0.8rem; }
+.who-buttons .btn { min-width:200px; }
+</style>

@@ -1,0 +1,47 @@
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const { $$, backBtn, header, sectionTitle, mainMenu, views, clearClientCache } = window.SPCA;
+
+  // Tile navigation
+  $$('.tile').forEach(btn => {
+    btn.addEventListener('click', () => openView(btn.dataset.view));
+  });
+
+  // Back button – return to main menu & clear client cache
+  backBtn.addEventListener('click', () => {
+    clearClientCache();
+    header.classList.add('hidden');
+    sectionTitle.textContent = '';
+    views.forEach(v => v.classList.add('hidden'));
+    mainMenu.classList.remove('hidden');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  // View switching
+  function openView(view) {
+    mainMenu.classList.add('hidden');
+    header.classList.remove('hidden');
+    sectionTitle.textContent = viewTitle(view);
+    views.forEach(v => v.classList.add('hidden'));
+
+    const target = document.querySelector(`#view-${view}`);
+    target.classList.remove('hidden');
+
+    if (view === 'schedule' && typeof renderScheduleFlow === 'function') {
+      renderScheduleFlow(target);
+    }
+  }
+
+  function viewTitle(view) {
+    return {
+      schedule: 'Schedule New Appointment',
+      modify:   'Modify Existing Appointment',
+      cancel:   'Cancel Appointment',
+      outcome:  'Log Appointment Outcome'
+    }[view] || '';
+  }
+
+  // Export so the Who-Are-You module can intercept it
+  window.openView = openView;
+});
+</script>

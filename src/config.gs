@@ -4,7 +4,7 @@
  */
 const CFG = {
   // ─── Google Sheet Info ─────────────────────────────
-  SHEET_ID: '110OZsGAWmndDo07REdKQIrdR92XDBLwKgMvtfZ1oboU',
+  SHEET_ID: '110OZsGAWmndDo07REdR92XDBLwKgMvtfZ1oboU',
   GID: 0,
   SHEET_NAME: 'Appointments', // must match tab name exactly
 
@@ -19,6 +19,7 @@ const CFG = {
     AMPM: 'AM or PM',
     GRANT: 'Reserved for Grant',
     NEEDS_SCHED: 'Needs Scheduling',
+    SCHEDULED_BY: 'Scheduled By',       // 🆕 new column added here
 
     // ─── Client Info ───────────────────────────
     FIRST: 'First Name',

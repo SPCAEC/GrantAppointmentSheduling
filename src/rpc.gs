@@ -58,10 +58,11 @@ function normalizePayload_(payload) {
 
 /**
  * Books an appointment by unique Appointment ID.
+ * Also writes "Scheduled By" to the sheet.
  */
-function apiBookAppointment(payload, type, date, time, appointmentId) {
+function apiBookAppointment(payload, type, date, time, appointmentId, schedulerName) {
   try {
-    Logger.log(`apiBookAppointment() | type=${type} | date=${date} | time=${time} | id=${appointmentId}`);
+    Logger.log(`apiBookAppointment() | type=${type} | date=${date} | time=${time} | id=${appointmentId} | scheduler=${schedulerName}`);
     if (!CFG || !CFG.SHEET_ID) throw new Error('Configuration (CFG) not found.');
     if (!payload || typeof payload !== 'object') throw new Error('Invalid payload');
 
@@ -100,6 +101,8 @@ function apiBookAppointment(payload, type, date, time, appointmentId) {
     // Update row
     payload[CFG.COLS.STATUS] = 'Reserved';
     payload[CFG.COLS.NEEDS_SCHED] = 'Yes';
+    if (CFG.COLS.SCHEDULED_BY) payload[CFG.COLS.SCHEDULED_BY] = schedulerName || '';
+
     updateAppointmentRow_(rowIndex, payload);
 
     Logger.log(`apiBookAppointment() → Updated row ${rowIndex} successfully.`);
@@ -107,6 +110,52 @@ function apiBookAppointment(payload, type, date, time, appointmentId) {
   } catch (err) {
     Logger.log('apiBookAppointment() ERROR: ' + err + '\n' + err.stack);
     return { ok: false, error: err.message || String(err) };
+  }
+}
+
+/**
+ * Sends a reminder to scheduler to upload vet records.
+ * Looks up recipient email by Script Property (EMAIL_NAME).
+ */
+function apiSendVetRecordReminder(schedulerName, petName, appointmentCard) {
+  try {
+    if (!schedulerName) throw new Error('Missing schedulerName');
+    if (!petName) throw new Error('Missing petName');
+
+    const props = PropertiesService.getScriptProperties();
+    const propKey = `EMAIL_${schedulerName.toUpperCase().replace(/\s+/g, '_')}`;
+    const recipient = props.getProperty(propKey);
+    if (!recipient) throw new Error(`Script property not found: ${propKey}`);
+
+    const uploadLink = 'https://script.google.com/macros/s/AKfycbxb1_Oha9qhWnaOMeUuFHSSEe5E7IoCPG2JPdkCn4Jmju-2VYiQzOobecO9DwKcC_pf/exec';
+    const subject = `REMINDER - Upload Records for ${petName}`;
+    const body = `
+Hi ${schedulerName},
+
+Your friendly PHP System here reminding you to upload or provide records for ${petName} to the Lipsey Clinic before their upcoming appointment.
+
+The appointment is scheduled for:
+${appointmentCard}
+
+You can upload records here:
+${uploadLink}
+
+— SPCA Outreach Team
+`;
+
+    MailApp.sendEmail({
+      to: recipient,
+      from: 'yourspcaoutreachteam@gmail.com',
+      name: 'SPCA Outreach Team',
+      subject,
+      body
+    });
+
+    Logger.log(`apiSendVetRecordReminder() → sent to ${recipient}`);
+    return { ok: true };
+  } catch (err) {
+    Logger.log('apiSendVetRecordReminder() ERROR: ' + err + '\n' + err.stack);
+    return { ok: false, error: err.message };
   }
 }
 
@@ -173,19 +222,14 @@ function apiCreateVetRecordsFolder(firstName, lastName, petName, clientEmail) {
 
 /**
  * Sends vet records upload email using the central upload web app link.
- * The link is stored in Script Properties under key RECORD_UPLOAD_LINK.
  */
 function apiSendVetRecordsRequest(clientEmail, folderUrl, firstName, petName) {
   try {
     if (!clientEmail) return { ok: false, error: 'Missing client email' };
 
-    // Get the upload link from script properties
     const props = PropertiesService.getScriptProperties();
     const uploadLink = props.getProperty('RECORD_UPLOAD_LINK');
-
-    if (!uploadLink) {
-      throw new Error('Missing Script Property: RECORD_UPLOAD_LINK');
-    }
+    if (!uploadLink) throw new Error('Missing Script Property: RECORD_UPLOAD_LINK');
 
     const subject = `Upload Veterinary Records for ${petName}`;
     const body = `
@@ -212,7 +256,6 @@ If you have any questions, please reply to this email or contact the SPCA Outrea
 
     Logger.log(`Vet record upload email sent to ${clientEmail} for ${petName}.`);
     return { ok: true };
-
   } catch (err) {
     Logger.log('apiSendVetRecordsRequest() ERROR: ' + err);
     return { ok: false, error: err.message };

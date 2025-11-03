@@ -1,0 +1,29 @@
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  // Basic selectors
+  const $  = sel => document.querySelector(sel);
+  const $$ = sel => [...document.querySelectorAll(sel)];
+
+  // Shared UI elements (must exist in Index.html)
+  const header = $('#appHeader');
+  const sectionTitle = $('#sectionTitle');
+  const backBtn = $('#backBtn');
+  const mainMenu = $('#mainMenu');
+  const views = $$('.sub-view');
+
+  // ─── Client cache (tab-lifetime) ─────────────────────────────
+  const CLIENT_CACHE_KEY = 'gap_client_cache_v1';
+  const setClientCache = (obj) => sessionStorage.setItem(CLIENT_CACHE_KEY, JSON.stringify(obj || {}));
+  const getClientCache = () => {
+    try { return JSON.parse(sessionStorage.getItem(CLIENT_CACHE_KEY) || '{}'); }
+    catch { return {}; }
+  };
+  const clearClientCache = () => sessionStorage.removeItem(CLIENT_CACHE_KEY);
+
+  // Expose a single namespace for other modules
+  window.SPCA = {
+    $, $$, header, sectionTitle, backBtn, mainMenu, views,
+    setClientCache, getClientCache, clearClientCache
+  };
+});
+</script>
