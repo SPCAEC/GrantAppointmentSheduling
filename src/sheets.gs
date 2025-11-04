@@ -7,21 +7,52 @@
  * Get the target sheet from CFG
  */
 function getSheet_() {
+  const traceId = Utilities.getUuid();
   try {
-    if (!CFG || !CFG.SHEET_ID) throw new Error('CFG.SHEET_ID missing.');
+    Logger.log(`[getSheet_] trace=${traceId} :: start`);
+
+    if (!CFG) throw new Error('CFG missing.');
+    if (!CFG.SHEET_ID) throw new Error('CFG.SHEET_ID missing.');
+
+    Logger.log(`[getSheet_] trace=${traceId} :: SHEET_ID=${CFG.SHEET_ID}`);
+    Logger.log(`[getSheet_] trace=${traceId} :: SHEET_NAME=${CFG.SHEET_NAME} | GID=${CFG.GID}`);
+
+    // Who is executing this code?
+    try {
+      const eff = Session.getEffectiveUser();
+      const act = Session.getActiveUser().getEmail ? Session.getActiveUser().getEmail() : '(no active user)';
+      Logger.log(`[getSheet_] trace=${traceId} :: effectiveUser=${eff} | activeUser=${act}`);
+    } catch (e) {
+      Logger.log(`[getSheet_] trace=${traceId} :: could not read Session users: ${e}`);
+    }
+
+    Logger.log(`[getSheet_] trace=${traceId} :: calling SpreadsheetApp.openById…`);
     const ss = SpreadsheetApp.openById(CFG.SHEET_ID);
-    if (!ss) throw new Error(`Spreadsheet not found for ID: ${CFG.SHEET_ID}`);
+    Logger.log(`[getSheet_] trace=${traceId} :: openById success :: title="${ss.getName()}"`);
 
-    const sheet =
-      ss.getSheets().find(s => s.getSheetId() === CFG.GID) ||
-      ss.getSheetByName(CFG.SHEET_NAME);
+    // Prefer exact GID if provided, else fallback to sheet name
+    let sheet = null;
+    if (typeof CFG.GID === 'number' && !isNaN(CFG.GID)) {
+      Logger.log(`[getSheet_] trace=${traceId} :: trying getSheets() find GID=${CFG.GID}`);
+      sheet = ss.getSheets().find(s => s.getSheetId() === CFG.GID) || null;
+      Logger.log(`[getSheet_] trace=${traceId} :: GID lookup ${sheet ? 'found' : 'not found'}`);
+    }
 
-    if (!sheet)
-      throw new Error(`Appointments sheet not found. Tried GID=${CFG.GID}, name=${CFG.SHEET_NAME}`);
+    if (!sheet && CFG.SHEET_NAME) {
+      Logger.log(`[getSheet_] trace=${traceId} :: trying getSheetByName("${CFG.SHEET_NAME}")`);
+      sheet = ss.getSheetByName(CFG.SHEET_NAME);
+      Logger.log(`[getSheet_] trace=${traceId} :: name lookup ${sheet ? 'found' : 'not found'}`);
+    }
 
+    if (!sheet) {
+      throw new Error(`Appointments sheet not found. Tried GID=${CFG.GID}, name="${CFG.SHEET_NAME}"`);
+    }
+
+    Logger.log(`[getSheet_] trace=${traceId} :: SUCCESS (sheetId=${sheet.getSheetId()}, name="${sheet.getName()}")`);
     return sheet;
+
   } catch (err) {
-    Logger.log('getSheet_() ERROR: ' + err.message);
+    Logger.log(`[getSheet_] trace=${traceId} :: ERROR: ${err && err.message ? err.message : err}`);
     throw err;
   }
 }
