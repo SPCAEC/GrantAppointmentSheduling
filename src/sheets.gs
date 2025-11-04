@@ -7,6 +7,7 @@
  * Get the target sheet from CFG
  */
 function getSheet_() {
+  Logger.log('CFG before openById: ' + JSON.stringify(CFG));
   const traceId = Utilities.getUuid();
   try {
     Logger.log(`[getSheet_] trace=${traceId} :: start`);
