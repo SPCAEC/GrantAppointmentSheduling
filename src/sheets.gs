@@ -7,57 +7,53 @@
  * Get the target sheet from CFG
  */
 function getSheet_() {
-  Logger.log('CFG before openById: ' + JSON.stringify(CFG));
-  const traceId = Utilities.getUuid();
   try {
-    Logger.log(`[getSheet_] trace=${traceId} :: start`);
+    const trace = Utilities.getUuid();
+    Logger.log(`[getSheet_] trace=${trace} :: start`);
 
-    if (!CFG) throw new Error('CFG missing.');
-    if (!CFG.SHEET_ID) throw new Error('CFG.SHEET_ID missing.');
+    if (!CFG || !CFG.SHEET_ID) throw new Error('CFG.SHEET_ID missing.');
 
-    Logger.log(`[getSheet_] trace=${traceId} :: SHEET_ID=${CFG.SHEET_ID}`);
-    Logger.log(`[getSheet_] trace=${traceId} :: SHEET_NAME=${CFG.SHEET_NAME} | GID=${CFG.GID}`);
-
-    // Who is executing this code?
+    // --- Try context-first approach ---
+    let ss;
     try {
-      const eff = Session.getEffectiveUser();
-      const act = Session.getActiveUser().getEmail ? Session.getActiveUser().getEmail() : '(no active user)';
-      Logger.log(`[getSheet_] trace=${traceId} :: effectiveUser=${eff} | activeUser=${act}`);
-    } catch (e) {
-      Logger.log(`[getSheet_] trace=${traceId} :: could not read Session users: ${e}`);
+      ss = SpreadsheetApp.getActiveSpreadsheet();
+      if (ss && ss.getName()) {
+        Logger.log(`[getSheet_] trace=${trace} :: using active spreadsheet "${ss.getName()}"`);
+      } else {
+        throw new Error('Active spreadsheet not available');
+      }
+    } catch (ctxErr) {
+      Logger.log(`[getSheet_] trace=${trace} :: active spreadsheet not available → using openById fallback`);
+      try {
+        // Primary fallback: open by ID via DriveApp (more stable in web apps)
+        const file = DriveApp.getFileById(CFG.SHEET_ID);
+        ss = SpreadsheetApp.open(file);
+      } catch (driveErr) {
+        Logger.log(`[getSheet_] trace=${trace} :: DriveApp fallback failed (${driveErr.message})`);
+        // Last resort: openById
+        ss = SpreadsheetApp.openById(CFG.SHEET_ID);
+      }
     }
 
-    Logger.log(`[getSheet_] trace=${traceId} :: calling SpreadsheetApp.openById…`);
-    const ss = SpreadsheetApp.openById(CFG.SHEET_ID);
-    Logger.log(`[getSheet_] trace=${traceId} :: openById success :: title="${ss.getName()}"`);
+    if (!ss) throw new Error('Spreadsheet object not obtained.');
 
-    // Prefer exact GID if provided, else fallback to sheet name
-    let sheet = null;
-    if (typeof CFG.GID === 'number' && !isNaN(CFG.GID)) {
-      Logger.log(`[getSheet_] trace=${traceId} :: trying getSheets() find GID=${CFG.GID}`);
-      sheet = ss.getSheets().find(s => s.getSheetId() === CFG.GID) || null;
-      Logger.log(`[getSheet_] trace=${traceId} :: GID lookup ${sheet ? 'found' : 'not found'}`);
-    }
+    // --- Locate correct sheet ---
+    const sheet =
+      ss.getSheets().find(s => s.getSheetId() === CFG.GID) ||
+      ss.getSheetByName(CFG.SHEET_NAME);
 
-    if (!sheet && CFG.SHEET_NAME) {
-      Logger.log(`[getSheet_] trace=${traceId} :: trying getSheetByName("${CFG.SHEET_NAME}")`);
-      sheet = ss.getSheetByName(CFG.SHEET_NAME);
-      Logger.log(`[getSheet_] trace=${traceId} :: name lookup ${sheet ? 'found' : 'not found'}`);
-    }
+    if (!sheet)
+      throw new Error(
+        `Appointments sheet not found. Tried GID=${CFG.GID}, name=${CFG.SHEET_NAME}`
+      );
 
-    if (!sheet) {
-      throw new Error(`Appointments sheet not found. Tried GID=${CFG.GID}, name="${CFG.SHEET_NAME}"`);
-    }
-
-    Logger.log(`[getSheet_] trace=${traceId} :: SUCCESS (sheetId=${sheet.getSheetId()}, name="${sheet.getName()}")`);
+    Logger.log(`[getSheet_] trace=${trace} :: SUCCESS → using sheet "${sheet.getName()}"`);
     return sheet;
-
   } catch (err) {
-    Logger.log(`[getSheet_] trace=${traceId} :: ERROR: ${err && err.message ? err.message : err}`);
+    Logger.log(`[getSheet_] ERROR: ${err.message}`);
     throw err;
   }
 }
-
 /**
  * Returns a normalized header→index map for defensive column access.
  */
