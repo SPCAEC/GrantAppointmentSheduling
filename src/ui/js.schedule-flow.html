@@ -1,7 +1,7 @@
 <script>
 function renderScheduleFlow(container) {
   const { getClientCache, setClientCache, clearClientCache, backBtn } = window.SPCA;
-
+  sectionTitle.textContent = 'Schedule New Appointment';
   // Build steps skeleton
   container.innerHTML = `
     <div id="step-type" class="schedule-step">
