@@ -1,23 +1,35 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  const { mainMenu, header, sectionTitle, views } = window.SPCA;
+  const { mainMenu, header, sectionTitle, views } = window.SPCA || {};
 
   const SCHEDULER_KEY = 'gap_scheduler_v1';
   function setSchedulerName(name){ sessionStorage.setItem(SCHEDULER_KEY, name || ''); }
   function getSchedulerName(){ return sessionStorage.getItem(SCHEDULER_KEY) || ''; }
 
-  // Make globally available to other modules
+  // Expose globally
   window.setSchedulerName = setSchedulerName;
   window.getSchedulerName = getSchedulerName;
 
-  const originalOpenView = window.openView;
-  window.openView = (view) => {
-    if (view === 'schedule' && !getSchedulerName()) {
-      showWhoAreYouScreen();
-      return;
+  // 🔹 Wait until navigation defines openView
+  const waitForOpenView = setInterval(() => {
+    if (typeof window.openView === 'function') {
+      clearInterval(waitForOpenView);
+      wrapOpenView();
     }
-    originalOpenView(view);
-  };
+  }, 50);
+
+  function wrapOpenView() {
+    const originalOpenView = window.openView;
+    window.openView = (view) => {
+      // intercept scheduling flow
+      if (view === 'schedule' && !getSchedulerName()) {
+        showWhoAreYouScreen();
+        return;
+      }
+      // otherwise continue as normal
+      originalOpenView(view);
+    };
+  }
 
   function showWhoAreYouScreen() {
     mainMenu.classList.add('hidden');
@@ -46,7 +58,8 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.addEventListener('click', () => {
         setSchedulerName(btn.dataset.name);
         container.innerHTML = `<div class="spinner"></div>`;
-        setTimeout(() => window.openView('schedule'), 250);
+        // slight delay for smooth transition
+        setTimeout(() => window.openView('schedule'), 300);
       });
     });
   }
@@ -54,8 +67,24 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 
 <style>
-.who-screen { text-align:center; padding:2rem 1rem; }
-.who-image { max-width:280px; width:80%; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.2); margin-bottom:1.2rem; }
-.who-buttons { display:flex; flex-direction:column; align-items:center; gap:0.8rem; }
-.who-buttons .btn { min-width:200px; }
+.who-screen {
+  text-align:center;
+  padding:2rem 1rem;
+}
+.who-image {
+  max-width:280px;
+  width:80%;
+  border-radius:12px;
+  box-shadow:0 4px 12px rgba(0,0,0,0.2);
+  margin-bottom:1.2rem;
+}
+.who-buttons {
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:0.8rem;
+}
+.who-buttons .btn {
+  min-width:200px;
+}
 </style>
