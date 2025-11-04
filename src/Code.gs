@@ -4,34 +4,50 @@
  *
  * Structure:
  *  - doGet(): main entry, serves ui/index.html
- *  - include(): inlines CSS, JS, or partials using <?!= include('path/file'); ?>
+ *  - include(): safely inlines CSS/JS partials using <?!= include('path/file'); ?>
  */
 
+/**
+ * Serves the main HTML interface.
+ */
 function doGet() {
   try {
+    Logger.log('🚀 Serving Grant Appointment Scheduling web app...');
     return HtmlService.createTemplateFromFile('ui/index')
       .evaluate()
       .setTitle('Grant Appointment Scheduling')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
       .setSandboxMode(HtmlService.SandboxMode.IFRAME);
   } catch (err) {
-    Logger.log('doGet() ERROR: ' + err);
+    Logger.log(`❌ doGet() ERROR: ${err.message || err}`);
     return HtmlService.createHtmlOutput('<p>Error loading web app.</p>');
   }
 }
 
 /**
- * Include helper
- * Usage: <?!= include('ui/filename'); ?>
- * Looks for .html automatically if extension omitted.
+ * include(filename)
+ * Safely inlines UI partials into HtmlService templates.
+ * Accepts paths like "ui/js.utils" or "ui/js.utils.html".
+ *
+ * Example:
+ *   <?!= include('ui/js.utils'); ?>
  */
 function include(filename) {
   try {
-    const cleanName = filename.endsWith('.html') ? filename : `${filename}.html`;
-    const output = HtmlService.createHtmlOutputFromFile(cleanName);
-    return output.getContent();
+    // Normalize path and ensure extension
+    let path = filename.trim().replace(/^\/*/, ''); // remove leading slashes
+    if (!path.endsWith('.html')) path += '.html';
+
+    // Try to load file content from project
+    const file = HtmlService.createHtmlOutputFromFile(path);
+    const content = file.getContent();
+
+    if (!content) throw new Error('File found but empty');
+    return content;
+
   } catch (err) {
-    Logger.log('include() ERROR: ' + err);
-    return `<!-- include error: ${err.message || err} -->`;
+    Logger.log(`❌ include() failed for "${filename}": ${err.message || err}`);
+    // Return harmless comment instead of raw include tag
+    return `<!-- include error: ${filename} (${err.message || err}) -->`;
   }
 }

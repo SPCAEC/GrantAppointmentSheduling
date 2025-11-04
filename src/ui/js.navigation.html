@@ -2,12 +2,12 @@
 document.addEventListener('DOMContentLoaded', () => {
   const { $$, backBtn, header, sectionTitle, mainMenu, views, clearClientCache } = window.SPCA;
 
-  // Tile navigation
+  // ─── Tile navigation ───────────────────────────
   $$('.tile').forEach(btn => {
     btn.addEventListener('click', () => openView(btn.dataset.view));
   });
 
-  // Back button – return to main menu & clear client cache
+  // ─── Back button: return to main menu ──────────
   backBtn.addEventListener('click', () => {
     clearClientCache();
     header.classList.add('hidden');
@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
-  // View switching
+  // ─── View switching logic ──────────────────────
   function openView(view) {
     mainMenu.classList.add('hidden');
     header.classList.remove('hidden');
@@ -27,18 +27,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const target = document.querySelector(`#view-${view}`);
     target.classList.remove('hidden');
 
-    // 🔹 NEW: route through the Who-Are-You screen first
     if (view === 'schedule') {
-      if (typeof renderWhoAreYouScreen === 'function') {
-        renderWhoAreYouScreen(target, () => {
-          // callback after scheduler is chosen
-          if (typeof renderScheduleFlow === 'function') {
-            renderScheduleFlow(target);
-          }
+      // 🔹 Correct: use the actual function exported by who-are-you.js
+      if (typeof showWhoAreYouScreen === 'function') {
+        showWhoAreYouScreen(target, () => {
+          // callback after scheduler selection
+          if (typeof renderScheduleFlow === 'function') renderScheduleFlow(target);
         });
       } else if (typeof renderScheduleFlow === 'function') {
-        // fallback (if Caterpillar not loaded for some reason)
-        renderScheduleFlow(target);
+        renderScheduleFlow(target); // fallback
       }
     }
   }
@@ -52,7 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }[view] || '';
   }
 
-  // Export so other modules (like Who-Are-You) can access openView
+  // Expose globally so other modules (like who-are-you) can hook in
   window.openView = openView;
 });
 </script>

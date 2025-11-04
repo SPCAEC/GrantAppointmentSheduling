@@ -10,34 +10,20 @@ document.addEventListener('DOMContentLoaded', () => {
   window.setSchedulerName = setSchedulerName;
   window.getSchedulerName = getSchedulerName;
 
-  // 🔹 Wait until navigation defines openView
-  const waitForOpenView = setInterval(() => {
-    if (typeof window.openView === 'function') {
-      clearInterval(waitForOpenView);
-      wrapOpenView();
+  // 🔹 Primary exported function called by navigation
+  window.showWhoAreYouScreen = function(container, onComplete) {
+    // if a scheduler is already chosen, skip the screen
+    const existing = getSchedulerName();
+    if (existing) {
+      onComplete && onComplete();
+      return;
     }
-  }, 50);
 
-  function wrapOpenView() {
-    const originalOpenView = window.openView;
-    window.openView = (view) => {
-      // intercept scheduling flow
-      if (view === 'schedule' && !getSchedulerName()) {
-        showWhoAreYouScreen();
-        return;
-      }
-      // otherwise continue as normal
-      originalOpenView(view);
-    };
-  }
-
-  function showWhoAreYouScreen() {
     mainMenu.classList.add('hidden');
     header.classList.remove('hidden');
     sectionTitle.textContent = 'Who are you?';
     views.forEach(v => v.classList.add('hidden'));
 
-    const container = document.querySelector('#view-schedule');
     container.classList.remove('hidden');
     container.innerHTML = `
       <div class="who-screen">
@@ -56,13 +42,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     container.querySelectorAll('.who-buttons .btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        setSchedulerName(btn.dataset.name);
+        const name = btn.dataset.name;
+        setSchedulerName(name);
         container.innerHTML = `<div class="spinner"></div>`;
-        // slight delay for smooth transition
-        setTimeout(() => window.openView('schedule'), 300);
+        setTimeout(() => onComplete && onComplete(), 300);
       });
     });
-  }
+  };
 });
 </script>
 

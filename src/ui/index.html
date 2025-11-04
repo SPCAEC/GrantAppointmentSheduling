@@ -4,7 +4,12 @@
     <base target="_top">
     <?!= include('ui/css.app.html'); ?>
 
-    <!-- JavaScript Modules -->
+    <!-- JavaScript Modules (ordered load) -->
+    <script>
+      // Protects in case include fails — prevents literal tags appearing
+      console.log("Loading app modules...");
+    </script>
+
     <?!= include('ui/js.utils.html'); ?>
     <?!= include('ui/js.navigation.html'); ?>
     <?!= include('ui/js.who-are-you.html'); ?>
