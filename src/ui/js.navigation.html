@@ -27,8 +27,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const target = document.querySelector(`#view-${view}`);
     target.classList.remove('hidden');
 
-    if (view === 'schedule' && typeof renderScheduleFlow === 'function') {
-      renderScheduleFlow(target);
+    // 🔹 NEW: route through the Who-Are-You screen first
+    if (view === 'schedule') {
+      if (typeof renderWhoAreYouScreen === 'function') {
+        renderWhoAreYouScreen(target, () => {
+          // callback after scheduler is chosen
+          if (typeof renderScheduleFlow === 'function') {
+            renderScheduleFlow(target);
+          }
+        });
+      } else if (typeof renderScheduleFlow === 'function') {
+        // fallback (if Caterpillar not loaded for some reason)
+        renderScheduleFlow(target);
+      }
     }
   }
 
@@ -41,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }[view] || '';
   }
 
-  // Export so the Who-Are-You module can intercept it
+  // Export so other modules (like Who-Are-You) can access openView
   window.openView = openView;
 });
 </script>
