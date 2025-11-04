@@ -7,12 +7,23 @@
  * Get the target sheet from CFG
  */
 function getSheet_() {
-  const ss = SpreadsheetApp.openById(CFG.SHEET_ID);
-  const sheet =
-    ss.getSheets().find(s => s.getSheetId() === CFG.GID) ||
-    ss.getSheetByName(CFG.SHEET_NAME);
-  if (!sheet) throw new Error('Appointments sheet not found.');
-  return sheet;
+  try {
+    if (!CFG || !CFG.SHEET_ID) throw new Error('CFG.SHEET_ID missing.');
+    const ss = SpreadsheetApp.openById(CFG.SHEET_ID);
+    if (!ss) throw new Error(`Spreadsheet not found for ID: ${CFG.SHEET_ID}`);
+
+    const sheet =
+      ss.getSheets().find(s => s.getSheetId() === CFG.GID) ||
+      ss.getSheetByName(CFG.SHEET_NAME);
+
+    if (!sheet)
+      throw new Error(`Appointments sheet not found. Tried GID=${CFG.GID}, name=${CFG.SHEET_NAME}`);
+
+    return sheet;
+  } catch (err) {
+    Logger.log('getSheet_() ERROR: ' + err.message);
+    throw err;
+  }
 }
 
 /**
