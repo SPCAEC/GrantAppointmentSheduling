@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const target = document.querySelector(`#view-${view}`);
     target.classList.remove('hidden');
 
-    // Handle "schedule" and "modify" flows with Who-Are-You interception
+    // 1. Handle "Schedule" and "Modify" (Explicit Identity Check Wrapper)
     if ((view === 'schedule' || view === 'modify') && typeof showWhoAreYouScreen === 'function') {
       showWhoAreYouScreen(target, () => {
         if (view === 'schedule' && typeof renderScheduleFlow === 'function') {
@@ -36,12 +36,16 @@ document.addEventListener('DOMContentLoaded', () => {
           renderModifyFlow(target);
         }
       });
-    } else if (view === 'schedule' && typeof renderScheduleFlow === 'function') {
+    } 
+    // 2. Fallback for Schedule/Modify if identity check fails/missing
+    else if (view === 'schedule' && typeof renderScheduleFlow === 'function') {
       renderScheduleFlow(target);
-    } else if (view === 'modify' && typeof renderModifyFlow === 'function') {
+    } 
+    else if (view === 'modify' && typeof renderModifyFlow === 'function') {
       renderModifyFlow(target);
-    }
-    } else if (view === 'cancel' && typeof renderCancelFlow === 'function') {
+    } 
+    // 3. Handle "Cancel" (Has its own internal Identity Check)
+    else if (view === 'cancel' && typeof renderCancelFlow === 'function') {
        renderCancelFlow(target);
     }
   }
@@ -56,7 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }[view] || '';
   }
 
-  // Expose globally so Who-Are-You and others can intercept
+  // Expose globally
   window.openView = openView;
 });
 </script>
