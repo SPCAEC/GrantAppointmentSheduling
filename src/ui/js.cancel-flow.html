@@ -1,6 +1,6 @@
 <script>
 (function () {
-  const { $, SCHEDULER } = window.SPCA || {};
+  const { $, SCHEDULER, sectionTitle } = window.SPCA || {};
   
   // Public Entry
   window.renderCancelFlow = function(container) {
@@ -10,6 +10,10 @@
         return showWhoAreYouScreen(container, () => renderCancelFlow(container));
       }
     }
+
+    // FIX: Ensure title is correct (in case "Who are you?" overwrote it)
+    if (sectionTitle) sectionTitle.textContent = 'Cancel Appointment';
+
     renderSearch(container);
   };
 
@@ -71,7 +75,7 @@
     target.appendChild(grid);
 
     rows.forEach(r => {
-      // Logic: Can only cancel "Scheduled" or "Reserved" (not completed/cancelled)
+      // Logic: Can only cancel "Scheduled" or "Reserved"
       // AND must be future date
       const isCancellable = r.editable && (r.status === 'Scheduled' || r.status === 'Reserved');
       
