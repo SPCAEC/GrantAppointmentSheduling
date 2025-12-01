@@ -309,15 +309,32 @@
 
   // ———————————————————————————————————
   // Transport & Upload link modal (for modify flow)
+  // ———————————————————————————————————
+  // Transport & Upload link modal (for modify flow)
   function showTransportModal(container, row, payload) {
     document.querySelectorAll('.modal').forEach(m => m.remove());
     const modal = document.createElement('div');
     modal.className = 'modal';
     const prevYes = (payload['Previous Vet Records'] === 'Yes');
 
+    // 1. Determine Current Selection Text
+    // Only show if the backend returned a value (won't show for new bookings if reused)
+    const currentTransport = row.transportNeeded || '';
+    const currentTextHtml = currentTransport 
+      ? `<p style="margin-top:-0.5rem; margin-bottom:1.25rem; color:#4b5563; font-size:0.95rem; background:#f3f4f6; display:inline-block; padding:0.25rem 0.75rem; border-radius:8px;">
+           Current Selection: <strong>${currentTransport}</strong>
+         </p>` 
+      : '';
+
+    // 2. Pre-select the button if we want (Optional UX enhancement)
+    // If you want the buttons to auto-select based on previous value, let me know! 
+    // For now, we just show the text as requested.
+
     modal.innerHTML = `
       <div class="modal-content">
-        <p>Does this client require transportation assistance for this appointment?</p>
+        <p style="margin-bottom:0.5rem;">Does this client require transportation assistance for this appointment?</p>
+        ${currentTextHtml}
+        
         <div class="actions transport-actions">
           <button class="btn transportBtn" data-transport="Yes">Yes</button>
           <button class="btn transportBtn" data-transport="No">No</button>
@@ -357,9 +374,12 @@
             return;
           }
           container.innerHTML = `
-            <h2>Appointment Updated!</h2>
-            <div class="actions">
-              <button class="btn" id="mBackToSearch">Back to search</button>
+            <div style="text-align:center; padding:2rem;">
+              <div style="font-size:3rem; margin-bottom:1rem;">✅</div>
+              <h2>Appointment Updated!</h2>
+              <div class="actions" style="justify-content:center; margin-top:1.5rem;">
+                <button class="btn" id="mBackToSearch">Back to search</button>
+              </div>
             </div>
           `;
           container.querySelector('#mBackToSearch').addEventListener('click', () => renderModifyFlow(container));

@@ -368,6 +368,7 @@ function apiSearchAppointments(query) {
         notes: String(r['Notes'] || ''),
         prevRecords: String(r[CFG.COLS.PREV_RECORDS] || ''),
         vetOffice: String(r[CFG.COLS.VET_OFFICE] || ''),
+        transportNeeded: String(r[CFG.COLS.TRANSPORT_NEEDED] || ''),
         editable: isEditable
       });
       
