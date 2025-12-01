@@ -4,13 +4,18 @@
  */
 const CFG = {
   // ─── Google Sheet Info ─────────────────────────────
-  SHEET_ID: '110OZsGAWmndDo07REdR92XDBLwKgMvtfZ1oboU',
+  SHEET_ID: '110OZsGAWmndDo07REdKQIrdR92XDBLwKgMvtfZ1oboU',
   GID: 0,
   SHEET_NAME: 'Appointments', // must match tab name exactly
 
+  // ─── Script Properties ─────────────────────────────
+  EMAIL_PROPS: {
+    CHANGE_ALERT: 'APPOINTMENT_CHANGE_EMAIL' // property name storing notification recipients
+  },
+
   // ─── Column Header Mappings ─────────────────────────
   COLS: {
-    ID: 'Appointment ID',               // unique per row
+    ID: 'Appointment ID',               
     TYPE: 'Appointment Type',
     STATUS: 'Appointment Status',
     DAY: 'Day of Week',
@@ -19,7 +24,8 @@ const CFG = {
     AMPM: 'AM or PM',
     GRANT: 'Reserved for Grant',
     NEEDS_SCHED: 'Needs Scheduling',
-    SCHEDULED_BY: 'Scheduled By',       // 🆕 new column added here
+    SCHEDULED_BY: 'Scheduled By',
+    UPDATED_BY: 'Updated by',
 
     // ─── Client Info ───────────────────────────
     FIRST: 'First Name',
@@ -30,6 +36,7 @@ const CFG = {
     CITY: 'City',
     STATE: 'State',
     ZIP: 'Zip Code',
+    TRANSPORT_NEEDED: 'Transportation Needed',
 
     // ─── Pet Info ──────────────────────────────
     PET_NAME: 'Pet Name',
@@ -45,5 +52,8 @@ const CFG = {
 
     // ─── Optional Timestamp ────────────────────
     UPDATED_AT: 'Updated At'
-  }
+  },
+
+  // ─── Helpers ────────────────────────────────────────
+  getTimestamp: () => new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })
 };

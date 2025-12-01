@@ -1,0 +1,388 @@
+<script>
+(function () {
+  const { $, $$, getClientCache, setClientCache, clearClientCache } = window.SPCA || {};
+  const SCHEDULER = () => (typeof getSchedulerName === 'function' ? getSchedulerName() : '');
+
+  // Public entry from navigation when user clicks "Modify"
+  window.renderModifyFlow = function renderModifyFlow(container) {
+    // if Who-Are-You wrapper didn’t catch it, ensure we have a name
+    if (!SCHEDULER()) {
+        if (typeof showWhoAreYouScreen === 'function') {
+            return showWhoAreYouScreen(container, () => renderModifyFlow(container));
+        }
+    }   
+    renderSearch(container);
+  };
+
+  // ———————————————————————————————————
+  // Search Screen
+    function renderSearch(container) {
+    container.innerHTML = `
+        <div class="schedule-step">
+        <h2>Find an Appointment to Modify</h2>
+        <div class="grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem;">
+            <div class="field">
+            <label>Date (MM/DD/YYYY)</label>
+            <input id="mDate" type="text" placeholder="11/05/2025">
+            </div>
+            <div class="field">
+            <label>Client Name (exact, case-insensitive)</label>
+            <input id="mClient" type="text" placeholder="First, Last, or First Last">
+            </div>
+            <div class="field">
+            <label>Pet Name (exact, case-insensitive)</label>
+            <input id="mPet" type="text" placeholder="e.g., Max">
+            </div>
+        </div>
+        <div class="actions">
+            <button id="mSearchBtn" class="btn">Search</button>
+            <button id="mClearBtn" class="btn secondary">Clear</button>
+        </div>
+        <div id="mResults" style="margin-top:1rem;"></div>
+        </div>
+    `;
+
+    const mDate = container.querySelector('#mDate');
+    const mClient = container.querySelector('#mClient');
+    const mPet = container.querySelector('#mPet');
+    const results = container.querySelector('#mResults');
+
+    // ———————————————————————————————————
+    // Search button
+    container.querySelector('#mSearchBtn').addEventListener('click', () => {
+        results.innerHTML = `<div class="spinner"></div>`;
+        results.scrollIntoView({ behavior: 'smooth' });
+
+        google.script.run
+        .withSuccessHandler(res => {
+            // 🔹 Always clear spinner first
+            const spinner = results.querySelector('.spinner');
+            if (spinner) spinner.remove();
+
+            if (!res || !res.ok) {
+            results.innerHTML = `<p class="error">${res?.error || 'Search failed.'}</p>`;
+            results.scrollIntoView({ behavior: 'smooth' });
+            return;
+            }
+
+            renderResults(results, res.rows || []);
+        })
+        .withFailureHandler(err => {
+            console.error(err);
+            const spinner = results.querySelector('.spinner');
+            if (spinner) spinner.remove();
+            results.innerHTML = `<p class="error">Server error during search.</p>`;
+            results.scrollIntoView({ behavior: 'smooth' });
+        })
+        .apiSearchAppointments({
+            date: mDate.value.trim(),
+            client: mClient.value.trim(),
+            pet: mPet.value.trim()
+        });
+    });
+
+    // ———————————————————————————————————
+    // Clear button
+    container.querySelector('#mClearBtn').addEventListener('click', () => {
+        mDate.value = '';
+        mClient.value = '';
+        mPet.value = '';
+        results.innerHTML = '';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    }
+
+  // ———————————————————————————————————
+  // Results list (cards)
+    function renderResults(target, rows) {
+    // 🔹 Remove any active spinner first
+    const spinner = target.querySelector('.spinner');
+    if (spinner) spinner.remove();
+
+    // 🔹 Smooth scroll user to results area
+    target.scrollIntoView({ behavior: 'smooth' });
+
+    if (!rows.length) {
+        target.innerHTML = `<p style="opacity:.7;">No matching appointments found.</p>`;
+        return;
+    }
+
+    // 🔹 Build grid normally
+    const grid = document.createElement('div');
+    grid.className = 'card-grid';
+    target.innerHTML = '';
+    target.appendChild(grid);
+
+    rows.forEach(r => {
+        const disabled = !r.editable;
+        const card = document.createElement('div');
+        card.className = 'card';
+        if (disabled) card.style.opacity = 0.6;
+
+        card.innerHTML = `
+        <div style="font-weight:600; margin-bottom:4px;">${r.firstName} ${r.lastName} — ${r.petName}</div>
+        <div>${r.date} ${r.time || ''}</div>
+        <div>Status: ${r.status || '—'}</div>
+        <div style="font-size:.85rem; opacity:.65;">ID: ${r.id}</div>
+        ${disabled ? `<div class="success-message" style="margin-top:.6rem; background:#fffbea; color:#92400e;">Not editable (on or before today)</div>` : ``}
+        `;
+
+        if (!disabled) {
+        card.style.cursor = 'pointer';
+        card.addEventListener('click', () => openEditForm(target.parentElement, r));
+        }
+
+        grid.appendChild(card);
+    });
+    }
+
+  // ———————————————————————————————————
+  // Edit Form (same fields as scheduling, prefilled)
+  function openEditForm(container, row) {
+    container.innerHTML = `
+      <div class="schedule-step">
+        <h2>Edit Appointment</h2>
+        <div id="formFields"></div>
+        <div class="actions">
+          <button id="mSave" class="btn">Save</button>
+          <button id="mCancel" class="btn secondary">Cancel</button>
+        </div>
+        <div id="mConfirm" class="hidden"><div class="spinner"></div></div>
+      </div>
+    `;
+
+    const formHost = container.querySelector('#formFields');
+    // Render the same form structure used in Schedule flow,
+    // but pre-fill with row values (we only render a reduced set here for brevity).
+    formHost.innerHTML = `
+      <div class="field"><label>First Name</label><input id="firstName" value="${safe(row.firstName)}"></div>
+      <div class="field"><label>Last Name</label><input id="lastName" value="${safe(row.lastName)}"></div>
+      <div class="field"><label>Email</label><input id="email" value="${safe(row.email)}"></div>
+      <div class="field"><label>Phone Number</label><input id="phone" value="${safe(row.phone)}"></div>
+
+      <hr class="divider">
+      <h3>Address</h3>
+      <div class="field"><label>Address</label><input id="address" value="${safe(row.address)}"></div>
+      <div class="field"><label>City</label><input id="city" value="${safe(row.city)}"></div>
+      <div class="field">
+        <label>State</label>
+        <select id="state">${getStatesOptions(row.state)}</select>
+      </div>
+      <div class="field"><label>Zip Code</label><input id="zip" value="${safe(row.zip)}"></div>
+
+      <hr class="divider">
+      <h3>Pet</h3>
+      <div class="field"><label>Pet Name</label><input id="petName" value="${safe(row.petName)}"></div>
+      <div class="field">
+        <label>Species</label>
+        <select id="species">
+          <option value="">— Select —</option>
+          ${['Canine','Feline','Other'].map(o => `<option ${row.species===o?'selected':''}>${o}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field"><label>Primary Breed</label><input id="breedOne" value="${safe(row.breedOne)}"></div>
+      <div class="field"><label>Secondary Breed</label><input id="breedTwo" value="${safe(row.breedTwo)}"></div>
+      <div class="field"><label>Color</label><input id="color" value="${safe(row.color)}"></div>
+      <div class="field"><label>Color Pattern</label><input id="colorPattern" value="${safe(row.colorPattern)}"></div>
+
+      <div class="field">
+        <label>Sex</label>
+        <select id="sex">
+          <option value="">— Select —</option>
+          ${['Male','Female'].map(o => `<option ${row.sex===o?'selected':''}>${o}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Spayed or Neutered</label>
+        <select id="altered">
+          <option value="">— Select —</option>
+          ${['Spayed','Neutered','No','Unknown'].map(o => `<option ${row.altered===o?'selected':''}>${o}</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="field"><label>Age</label><input id="age" value="${safe(row.age)}" placeholder="e.g., 2 years or 8 months"></div>
+
+      <div class="field">
+        <label>Vaccines Needed</label>
+        <div id="vaccines" class="option-list"></div>
+      </div>
+
+      <div class="field">
+        <label>Additional Services</label>
+        <div id="additionalServices" class="option-list"></div>
+      </div>
+
+      <div class="field">
+        <label>Previous Vet Records?</label>
+        <div class="option-buttons-left">
+          ${radio('hasVetRecords','Yes', row.prevRecords==='Yes')}
+          ${radio('hasVetRecords','No',  row.prevRecords!=='Yes')}
+        </div>
+      </div>
+
+      <div class="field"><label>Vet Office Name</label><input id="vetOffice" value="${safe(row.vetOffice)}"></div>
+
+      <div class="field"><label>Allergies or Sensitivities</label><input id="allergies" value="${safe(row.allergies)}" placeholder="None known"></div>
+      <div class="field"><label>Approx. Weight (lbs)</label><input id="weight" type="number" step="0.1" value="${safe(row.weight)}"></div>
+      <div class="field"><label>Additional Notes</label><textarea id="notes" rows="3">${safe(row.notes)}</textarea></div>
+
+      <div class="field">
+        <label>Appointment Status</label>
+        <select id="status">
+          ${['Available','Scheduled','Reserved','Completed','Cancelled'].map(o => `<option ${row.status===o?'selected':''}>${o}</option>`).join('')}
+        </select>
+      </div>
+    `;
+
+    // hydrate vaccines & additional services with checks
+    google.script.run.withSuccessHandler(res => {
+      if (!res || !res.ok) return;
+      const chosen = csvToArray(row.vaccines || '');
+      const host = container.querySelector('#vaccines');
+      const speciesVal = row.species;
+      const list = speciesVal === 'Canine' ? (res.canine || []) : speciesVal === 'Feline' ? (res.feline || []) : [];
+      host.innerHTML = list.map(v => `
+        <label class="radio-option">
+          <input type="checkbox" name="vaccine" value="${v}" ${chosen.includes(v) ? 'checked':''}> ${v}
+        </label>
+      `).join('');
+    }).apiGetVaccineLists();
+
+    google.script.run.withSuccessHandler(res => {
+      if (!res || !res.ok) return;
+      const chosen = csvToArray(row.additionalServices || '');
+      const host = container.querySelector('#additionalServices');
+      host.innerHTML = (res.services || []).map(s => `
+        <label class="radio-option">
+          <input type="checkbox" name="service" value="${s}" ${chosen.includes(s) ? 'checked':''}> ${s}
+        </label>
+      `).join('');
+    }).apiGetAdditionalServices();
+
+    // Save / Cancel
+    // Save / Cancel
+    const confirmBlock = container.querySelector('#mConfirm');
+    container.querySelector('#mCancel').addEventListener('click', () => {
+    // back to search
+    renderModifyFlow(container);
+    });
+
+    container.querySelector('#mSave').addEventListener('click', e => {
+    e.target.disabled = true; // ✅ Prevent double-click
+    const payload = collectPayload(container);
+    showTransportModal(container, row, payload);
+    });
+  }
+
+  function collectPayload(container) {
+    const get = id => container.querySelector('#' + id)?.value?.trim() || '';
+    const checkedVals = (name) => [...container.querySelectorAll(`input[name="${name}"]:checked`)].map(el => el.value).join(', ');
+
+    return {
+      'First Name': get('firstName'),
+      'Last Name': get('lastName'),
+      'Email': get('email'),
+      'Phone Number': get('phone'),
+      'Address': get('address'),
+      'City': get('city'),
+      'State': get('state'),
+      'Zip Code': get('zip'),
+      'Pet Name': get('petName'),
+      'Species': get('species'),
+      'Sex': get('sex'),
+      'Spayed or Neutered': get('altered'),
+      'Age': get('age'),
+      'Breed One': get('breedOne'),
+      'Breed Two': get('breedTwo'),
+      'Color': get('color'),
+      'Color Pattern': get('colorPattern'),
+      'Vaccines Needed': checkedVals('vaccine'),
+      'Additional Services': checkedVals('service'),
+      'Allergies or Sensitivities': get('allergies') || 'None known',
+      'Weight': get('weight'),
+      'Notes': get('notes'),
+      'Previous Vet Records': (container.querySelector('input[name="hasVetRecords"]:checked')?.value || 'No'),
+      'Vet Office Name': get('vetOffice'),
+      'Appointment Status': get('status')
+    };
+  }
+
+  // ———————————————————————————————————
+  // Transport & Upload link modal (for modify flow)
+  function showTransportModal(container, row, payload) {
+    document.querySelectorAll('.modal').forEach(m => m.remove());
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    const prevYes = (payload['Previous Vet Records'] === 'Yes');
+
+    modal.innerHTML = `
+      <div class="modal-content">
+        <p>Does this client require transportation assistance for this appointment?</p>
+        <div class="actions transport-actions">
+          <button class="btn transportBtn" data-transport="Yes">Yes</button>
+          <button class="btn transportBtn" data-transport="No">No</button>
+        </div>
+        ${prevYes ? `
+          <hr class="divider">
+          <p>Please use the link below to upload any additional records you have at this time. Previous uploads will not be deleted.</p>
+          <p><a href="https://script.google.com/macros/s/AKfycbxb1_Oha9qhWnaOMeUuFHSSEe5E7IoCPG2JPdkCn4Jmju-2VYiQzOobecO9DwKcC_pf/exec" target="_blank" rel="noopener">Open Vet Records Uploader</a></p>
+        ` : ``}
+        <hr class="divider">
+        <div class="actions">
+          <button id="mSubmit" class="btn" disabled>Submit</button>
+          <button id="mCancelModal" class="btn secondary">Cancel</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    let chosenTransport = '';
+    modal.querySelectorAll('.transportBtn').forEach(b => {
+      b.addEventListener('click', () => {
+        modal.querySelectorAll('.transportBtn').forEach(x => x.classList.remove('selected'));
+        b.classList.add('selected');
+        chosenTransport = b.dataset.transport;
+        modal.querySelector('#mSubmit').disabled = !chosenTransport;
+      });
+    });
+
+    modal.querySelector('#mCancelModal').addEventListener('click', () => modal.remove());
+    modal.querySelector('#mSubmit').addEventListener('click', () => {
+      modal.querySelector('#mSubmit').classList.add('loading');
+      google.script.run
+        .withSuccessHandler(res => {
+          modal.remove();
+          if (!res || !res.ok) {
+            container.innerHTML = `<p class="error">${res?.error || 'Update failed.'}</p>`;
+            return;
+          }
+          container.innerHTML = `
+            <h2>Appointment Updated!</h2>
+            <div class="actions">
+              <button class="btn" id="mBackToSearch">Back to search</button>
+            </div>
+          `;
+          container.querySelector('#mBackToSearch').addEventListener('click', () => renderModifyFlow(container));
+        })
+        .withFailureHandler(err => {
+          modal.remove();
+          container.innerHTML = `<p class="error">Server error updating appointment.</p>`;
+          console.error(err);
+        })
+        .apiUpdateAppointment(row.id, payload, SCHEDULER(), chosenTransport);
+    });
+  }
+
+  // ———————————————————————————————————
+  // Small helpers
+  function csvToArray(s) {
+    return (s || '').split(',').map(x => x.trim()).filter(Boolean);
+  }
+  function safe(v){ return (v==null?'':String(v).replace(/"/g,'&quot;')); }
+  function radio(name, val, checked){ return `<label><input type="radio" name="${name}" value="${val}" ${checked?'checked':''}> ${val}</label>`; }
+  function getStatesOptions(current) {
+    const list = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
+    return list.map(s => `<option ${current===s?'selected':''}>${s}</option>`).join('');
+  }
+})();
+</script>

@@ -1,8 +1,15 @@
 <script>
 function renderScheduleFlow(container) {
-  const { getClientCache, setClientCache, clearClientCache, backBtn } = window.SPCA;
+  const { getClientCache, setClientCache, clearClientCache, backBtn, sectionTitle } = window.SPCA;
   sectionTitle.textContent = 'Schedule New Appointment';
-  // Build steps skeleton
+
+  // ─── STATE ───────────────────────────────────────────
+  let selectedType = null;
+  let slotsShown = 6;
+  let selectedSlot = null;
+  let isRogueMode = false; // New State Flag
+
+  // ─── TEMPLATE SKELETON ───────────────────────────────
   container.innerHTML = `
     <div id="step-type" class="schedule-step">
       <h2>What type of appointment?</h2>
@@ -17,11 +24,34 @@ function renderScheduleFlow(container) {
       <div id="slotGrid" class="card-grid"></div>
       <div class="actions">
         <button id="showMoreBtn" class="btn secondary">Show 6 More</button>
+        <button id="rogueBtn" class="btn tertiary" style="border: 2px dashed #dc2626; color: #dc2626;">Go Rogue (Create Exception)</button>
       </div>
     </div>
 
     <div id="step-form" class="schedule-step hidden">
-      <h2>Client & Pet Information</h2>
+      <h2 id="formTitle">Client & Pet Information</h2>
+      
+      <div id="rogueFields" class="hidden" style="background:#fff1f2; padding:1rem; border-radius:8px; border:1px solid #dc2626; margin-bottom:1.5rem;">
+        <h3 style="color:#b91c1c; margin-top:0;">Exception Details</h3>
+        <div class="field">
+           <label>Appointment Date (MM/DD/YYYY)</label>
+           <input type="text" id="rogueDate" placeholder="MM/DD/YYYY">
+        </div>
+        <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
+           <div class="field">
+             <label>Time</label>
+             <input type="text" id="rogueTime" placeholder="09:00">
+           </div>
+           <div class="field">
+             <label>AM/PM</label>
+             <select id="rogueAmPm">
+               <option selected>AM</option>
+               <option>PM</option>
+             </select>
+           </div>
+        </div>
+      </div>
+
       <div id="formFields"></div>
       <div class="actions">
         <button id="continueBtn" class="btn">Continue</button>
@@ -33,22 +63,22 @@ function renderScheduleFlow(container) {
     </div>
   `;
 
+  // ─── DOM ELEMENTS ────────────────────────────────────
   const stepType = container.querySelector('#step-type');
   const stepSlots = container.querySelector('#step-slots');
   const stepForm = container.querySelector('#step-form');
   const stepConfirm = container.querySelector('#step-confirm');
   const slotGrid = container.querySelector('#slotGrid');
   const showMoreBtn = container.querySelector('#showMoreBtn');
+  const rogueBtn = container.querySelector('#rogueBtn');
   const continueBtn = container.querySelector('#continueBtn');
+  const rogueFields = container.querySelector('#rogueFields');
 
-  let selectedType = null;
-  let slotsShown = 6;
-  let selectedSlot = null;
-
-  // Step 1 → Select type
+  // ─── STEP 1: SELECT TYPE ─────────────────────────────
   stepType.querySelectorAll('button[data-type]').forEach(btn => {
     btn.addEventListener('click', () => {
       selectedType = btn.dataset.type;
+      isRogueMode = false; // Reset
       stepType.classList.add('hidden');
       stepSlots.classList.remove('hidden');
       slotGrid.innerHTML = `<div class="spinner"></div>`;
@@ -57,6 +87,8 @@ function renderScheduleFlow(container) {
     });
   });
 
+  // ─── STEP 2: SLOT SELECTION / GO ROGUE ───────────────
+  
   function fetchSlots() {
     google.script.run
       .withSuccessHandler(res => {
@@ -77,7 +109,6 @@ function renderScheduleFlow(container) {
     slotGrid.innerHTML = '';
     if (!slots.length) {
       slotGrid.innerHTML = `<p>No available appointments found.</p>`;
-      return;
     }
     slots.forEach(slot => {
       const card = document.createElement('div');
@@ -91,10 +122,8 @@ function renderScheduleFlow(container) {
       `;
       card.addEventListener('click', () => {
         selectedSlot = slot;
-        stepSlots.classList.add('hidden');
-        stepForm.classList.remove('hidden');
-        renderFormFields();
-        scrollTop();
+        isRogueMode = false;
+        goToForm();
       });
       slotGrid.appendChild(card);
     });
@@ -106,9 +135,57 @@ function renderScheduleFlow(container) {
     fetchSlots();
   });
 
-  // ──────────────────────────────
-  // Step 3: Client & Pet Form
-  // ──────────────────────────────
+  // GO ROGUE Handler
+  rogueBtn.addEventListener('click', () => {
+    isRogueMode = true;
+    selectedSlot = null;
+    goToForm();
+  });
+
+  function goToForm() {
+    stepSlots.classList.add('hidden');
+    stepForm.classList.remove('hidden');
+    
+    // Toggle Rogue UI elements
+    if (isRogueMode) {
+      rogueFields.classList.remove('hidden');
+      container.querySelector('#formTitle').textContent = `Creating Exception (${selectedType})`;
+      setupRogueFormatters();
+    } else {
+      rogueFields.classList.add('hidden');
+      container.querySelector('#formTitle').textContent = 'Client & Pet Information';
+    }
+
+    renderFormFields();
+    scrollTop();
+  }
+
+  function setupRogueFormatters() {
+    const dInput = container.querySelector('#rogueDate');
+    const tInput = container.querySelector('#rogueTime');
+
+    // Simple Date formatter MM/DD/YYYY
+    dInput.addEventListener('input', (e) => {
+      let v = e.target.value.replace(/\D/g, '');
+      if (v.length >= 5) v = `${v.slice(0,2)}/${v.slice(2,4)}/${v.slice(4,8)}`;
+      else if (v.length >= 3) v = `${v.slice(0,2)}/${v.slice(2)}`;
+      e.target.value = v;
+    });
+
+    // Time formatter ##:##
+    tInput.addEventListener('blur', (e) => {
+      let v = e.target.value.replace(/\D/g, ''); // strip non-digits
+      if (v.length > 0) {
+        if (v.length === 1) v = `0${v}:00`;       // 9 -> 09:00
+        else if (v.length === 2) v = `${v}:00`;   // 10 -> 10:00
+        else if (v.length === 3) v = `0${v.slice(0,1)}:${v.slice(1)}`; // 930 -> 09:30
+        else if (v.length === 4) v = `${v.slice(0,2)}:${v.slice(2)}`; // 1030 -> 10:30
+        e.target.value = v;
+      }
+    });
+  }
+
+  // ─── STEP 3: CLIENT FORM RENDER ──────────────────────
   function renderFormFields() {
     const f = container.querySelector('#formFields');
     const cached = getClientCache();
@@ -207,7 +284,7 @@ function renderScheduleFlow(container) {
       }
     });
 
-    // Vaccines dynamic list (checkboxes with labels)
+    // Vaccines dynamic list
     const speciesSelect = container.querySelector('#species');
     const vaccineList = container.querySelector('#vaccines');
     google.script.run
@@ -228,7 +305,6 @@ function renderScheduleFlow(container) {
             : `<p style="opacity:.6; margin:0;">— No Vaccines Available —</p>`;
         };
 
-        // Render immediately if cached species exists
         if (cached['Species']) {
           speciesSelect.value = cached['Species'];
           renderVaccines(cached['Species']);
@@ -238,7 +314,7 @@ function renderScheduleFlow(container) {
       })
       .apiGetVaccineLists();
 
-    // Additional Services list (checkboxes with labels)
+    // Additional Services list
     google.script.run
       .withSuccessHandler(res => {
         if (!res || !res.ok) return;
@@ -252,15 +328,24 @@ function renderScheduleFlow(container) {
       .apiGetAdditionalServices();
   }
 
-  continueBtn.addEventListener('click', showTransportModal);
+  continueBtn.addEventListener('click', () => {
+    // If Rogue Mode, we validate date/time first
+    if (isRogueMode) {
+        const d = container.querySelector('#rogueDate').value;
+        const t = container.querySelector('#rogueTime').value;
+        if (!d || !t) {
+            alert("Please enter a valid Date and Time for this exception appointment.");
+            return;
+        }
+    }
+    showTransportModal(); 
+  });
 
   function scrollTop() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  // ──────────────────────────────
-  // Step 4: Transport & Vet Records Modal
-  // ──────────────────────────────
+  // ─── STEP 4: TRANSPORT & VET RECORDS MODAL ───────────
   function showTransportModal() {
     const hasVetRecords = container.querySelector('input[name="hasVetRecords"]:checked')?.value === 'Yes';
     const firstName = container.querySelector('#firstName').value.trim();
@@ -303,11 +388,12 @@ function renderScheduleFlow(container) {
       if (kind) setTimeout(()=> toast.textContent='', 3000);
     };
 
-    // Transport buttons: highlight selection, enable actions only after chosen
+    // Transport buttons
     const transportButtons = modal.querySelectorAll('.transportBtn');
     const enableRecordButtons = () => {
       modal.querySelectorAll('#uploadBtn,#sendRequestBtn,#remindLaterBtn').forEach(b => b && b.removeAttribute('disabled'));
     };
+    
     transportButtons.forEach(btn => {
       btn.addEventListener('click', () => {
         transportButtons.forEach(b => b.classList.remove('selected'));
@@ -316,11 +402,12 @@ function renderScheduleFlow(container) {
         modal.dataset.transport = transport;
 
         if (!hasVetRecords) {
-          // proceed immediately if no vet records flow
+          // Proceed immediately if no records to deal with
           modal.remove();
-          bookAppointment(transport);
+          // CHECK IF ROGUE
+          if (isRogueMode) showRogueWarning(transport);
+          else bookAppointment(transport);
         } else {
-          // allow upload / request / remind after transport is chosen
           enableRecordButtons();
         }
       });
@@ -341,14 +428,12 @@ function renderScheduleFlow(container) {
           const files = [...input.files];
           if (!files.length) return;
 
-          // show immediate "preparing" row to avoid perceived delay
           const uploadList = modal.querySelector('#uploadList');
           const prepRow = document.createElement('div');
           prepRow.className = 'upload-item';
           prepRow.innerHTML = `<span>Preparing upload…</span> <span class="spinner small"></span>`;
           uploadList.appendChild(prepRow);
 
-          // Create client/pet folder, then upload files
           google.script.run
             .withSuccessHandler(res => {
               prepRow.remove();
@@ -372,7 +457,8 @@ function renderScheduleFlow(container) {
                         setToast('All files uploaded successfully!', 'success');
                         setTimeout(() => {
                           modal.remove();
-                          bookAppointment(modal.dataset.transport);
+                          if (isRogueMode) showRogueWarning(modal.dataset.transport);
+                          else bookAppointment(modal.dataset.transport);
                         }, 600);
                       }
                     })
@@ -415,7 +501,8 @@ function renderScheduleFlow(container) {
             setToast('Upload link sent to client!', 'success');
             setTimeout(() => {
               modal.remove();
-              bookAppointment(modal.dataset.transport);
+              if (isRogueMode) showRogueWarning(modal.dataset.transport);
+              else bookAppointment(modal.dataset.transport);
             }, 600);
           })
           .withFailureHandler(err => {
@@ -427,7 +514,7 @@ function renderScheduleFlow(container) {
       });
     }
 
-    // Remind Me Later (NEW)
+    // Remind Me Later
     const remindBtn = modal.querySelector('#remindLaterBtn');
     if (remindBtn) {
       remindBtn.addEventListener('click', () => {
@@ -437,7 +524,16 @@ function renderScheduleFlow(container) {
         }
         const scheduler = (typeof getSchedulerName === 'function') ? getSchedulerName() : '';
         const pet = petName;
-        const apptCard = `${selectedSlot.day} ${selectedSlot.date} at ${selectedSlot.time} (${selectedType})`;
+        // Construct appointment string. If Rogue, use input fields. If Slot, use selectedSlot
+        let apptCard = '';
+        if (isRogueMode) {
+             const d = container.querySelector('#rogueDate').value;
+             const t = container.querySelector('#rogueTime').value;
+             const ap = container.querySelector('#rogueAmPm').value;
+             apptCard = `${d} at ${t} ${ap} (Exception/Rogue: ${selectedType})`;
+        } else {
+             apptCard = `${selectedSlot.day} ${selectedSlot.date} at ${selectedSlot.time} (${selectedType})`;
+        }
 
         remindBtn.classList.add('loading');
 
@@ -451,7 +547,8 @@ function renderScheduleFlow(container) {
             setToast('Reminder sent to scheduler!', 'success');
             setTimeout(() => {
               modal.remove();
-              bookAppointment(modal.dataset.transport);
+              if (isRogueMode) showRogueWarning(modal.dataset.transport);
+              else bookAppointment(modal.dataset.transport);
             }, 600);
           })
           .withFailureHandler(err => {
@@ -464,16 +561,39 @@ function renderScheduleFlow(container) {
     }
   }
 
-  // ──────────────────────────────
-  // Step 5: Book Appointment
-  // ──────────────────────────────
-  function bookAppointment(transport) {
-    stepForm.classList.add('hidden');
-    stepConfirm.classList.remove('hidden');
+  // ─── ROGUE WARNING MODAL ─────────────────────────────
+  function showRogueWarning(transport) {
+    const warnModal = document.createElement('div');
+    warnModal.className = 'modal';
+    warnModal.innerHTML = `
+      <div class="modal-content" style="border-top: 6px solid #dc2626;">
+        <h2 style="color:#b91c1c;">⚠️ Exception Warning</h2>
+        <p>By scheduling this appointment a new slot will be created as a one-time exception for this client.</p>
+        <p><strong>Please only continue if Lipsey or the Infirmary has already approved this date/time.</strong></p>
+        <div class="actions">
+          <button id="rogueConfirm" class="btn" style="background:#dc2626;">I Understand, Create It</button>
+          <button id="rogueCancel" class="btn secondary">Cancel</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(warnModal);
 
-    // Build payload
+    warnModal.querySelector('#rogueCancel').addEventListener('click', () => {
+      warnModal.remove(); 
+      // Returns user to form, no data loss
+    });
+
+    warnModal.querySelector('#rogueConfirm').addEventListener('click', () => {
+      warnModal.remove();
+      bookRogueAppointment(transport);
+    });
+  }
+
+  // ─── STEP 5: BOOK APPOINTMENT ────────────────────────
+  
+  function collectPayload(transport) {
     const allergies = (container.querySelector('#allergies').value || '').trim() || 'None known';
-    const payload = {
+    return {
       'First Name': container.querySelector('#firstName').value.trim(),
       'Last Name': container.querySelector('#lastName').value.trim(),
       'Email': container.querySelector('#email').value.trim(),
@@ -500,21 +620,19 @@ function renderScheduleFlow(container) {
       'Vet Office Name': container.querySelector('#vetOffice').value.trim(),
       'Transportation Needed': (transport === 'Yes' ? 'Yes' : 'No')
     };
+  }
+
+  // Normal Booking
+  function bookAppointment(transport) {
+    stepForm.classList.add('hidden');
+    stepConfirm.classList.remove('hidden');
+
+    const payload = collectPayload(transport);
 
     // Save client portion to session cache for “Book another…”
-    setClientCache({
-      'First Name': payload['First Name'],
-      'Last Name': payload['Last Name'],
-      'Email': payload['Email'],
-      'Phone Number': payload['Phone Number'],
-      'Address': payload['Address'],
-      'City': payload['City'],
-      'State': payload['State'],
-      'Zip Code': payload['Zip Code'],
-      'Species': payload['Species']
-    });
+    setClientCache(payload); 
 
-    console.log('Booking appointment payload:', payload);
+    const scheduler = (typeof getSchedulerName === 'function') ? getSchedulerName() : '';
 
     google.script.run
       .withSuccessHandler(res => {
@@ -528,15 +646,42 @@ function renderScheduleFlow(container) {
         console.error('Booking failed:', err);
         stepConfirm.innerHTML = `<p class="error">Server error booking appointment.</p>`;
       })
-      // Pass scheduler name to backend (populates "Scheduled By")
       .apiBookAppointment(
         payload,
         selectedType,
         selectedSlot.date,
         selectedSlot.time,
         selectedSlot.id,
-        (typeof getSchedulerName === 'function') ? getSchedulerName() : ''
+        scheduler
       );
+  }
+
+  // Rogue Booking
+  function bookRogueAppointment(transport) {
+    stepForm.classList.add('hidden');
+    stepConfirm.classList.remove('hidden');
+
+    const payload = collectPayload(transport);
+    
+    // Add Rogue Specifics
+    payload['Appointment Type'] = selectedType;
+    payload['Date'] = container.querySelector('#rogueDate').value.trim();
+    payload['Time'] = container.querySelector('#rogueTime').value.trim();
+    payload['AM or PM'] = container.querySelector('#rogueAmPm').value;
+    payload['Scheduled By'] = (typeof getSchedulerName === 'function') ? getSchedulerName() : '';
+
+    // Save Cache (Normal cache, rogue date not cached)
+    setClientCache(payload);
+
+    google.script.run
+      .withSuccessHandler(res => {
+         if(!res.ok) { stepConfirm.innerHTML = `<p class="error">${res.error}</p>`; return; }
+         showConfirmation();
+      })
+      .withFailureHandler(err => {
+         stepConfirm.innerHTML = `<p class="error">Server error booking rogue appointment.</p>`;
+      })
+      .apiCreateRogueAppointment(payload);
   }
 
   function showConfirmation() {
@@ -548,7 +693,9 @@ function renderScheduleFlow(container) {
       </div>
     `;
     container.querySelector('#bookAnotherBtn').addEventListener('click', () => {
-      // Keep cache; restart flow
+      // If we went rogue, we reset rogue mode for the next one
+      isRogueMode = false;
+      selectedSlot = null;
       renderScheduleFlow(container);
       scrollTop();
     });

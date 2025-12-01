@@ -281,3 +281,177 @@ function apiUploadVetRecord(filename, base64Data, folderId) {
     return { ok: false, error: err.message };
   }
 }
+/**
+ * Search existing appointments by exact (case-insensitive) match on any of:
+ * - date (MM/dd/yyyy string)
+ * - client (first, last, or "first last")
+ * - pet
+ */
+function apiSearchAppointments(query) {
+  try {
+    const { date, client, pet } = query || {};
+    const rows = searchAppointments_(date, client, pet).map(r => ({
+      id: String(r[CFG.COLS.ID] || ''),
+      date: String(r[CFG.COLS.DATE] || ''),
+      time: `${r[CFG.COLS.TIME] || ''} ${r[CFG.COLS.AMPM] || ''}`.trim(),
+      status: String(r[CFG.COLS.STATUS] || ''),
+      firstName: String(r[CFG.COLS.FIRST] || ''),
+      lastName: String(r[CFG.COLS.LAST] || ''),
+      email: String(r[CFG.COLS.EMAIL] || ''),
+      phone: String(r[CFG.COLS.PHONE] || ''),
+      address: String(r[CFG.COLS.ADDRESS] || ''),
+      city: String(r[CFG.COLS.CITY] || ''),
+      state: String(r[CFG.COLS.STATE] || ''),
+      zip: String(r[CFG.COLS.ZIP] || ''),
+      petName: String(r[CFG.COLS.PET_NAME] || ''),
+      species: String(r[CFG.COLS.SPECIES] || ''),
+      breedOne: String(r[CFG.COLS.BREED_ONE] || ''),
+      breedTwo: String(r[CFG.COLS.BREED_TWO] || ''),
+      color: String(r[CFG.COLS.COLOR] || ''),
+      colorPattern: String(r[CFG.COLS.COLOR_PATTERN] || ''),
+      sex: String(r['Sex'] || ''), // if you have a COLS.SEX, swap in
+      altered: String(r['Spayed or Neutered'] || ''), // same note
+      age: String(r['Age'] || ''),
+      vaccines: String(r[CFG.COLS.VACCINES] || ''),
+      additionalServices: String(r[CFG.COLS.ADDITIONAL_SERVICES] || ''),
+      allergies: String(r['Allergies or Sensitivities'] || ''),
+      weight: String(r['Weight'] || ''),
+      notes: String(r['Notes'] || ''),
+      prevRecords: String(r[CFG.COLS.PREV_RECORDS] || ''),
+      vetOffice: String(r[CFG.COLS.VET_OFFICE] || ''),
+      editable: isFutureDate_(String(r[CFG.COLS.DATE] || ''))
+    }));
+    return { ok: true, rows };
+  } catch (err) {
+    Logger.log('apiSearchAppointments() ERROR: ' + err + '\n' + err.stack);
+    return { ok: false, error: err.message || String(err) };
+  }
+}
+
+/**
+ * Update an appointment row by Appointment ID.
+ * Overwrites the row with payload (like scheduling) + stamps Updated by.
+ * If status == "Scheduled", sends change email immediately.
+ */
+function apiUpdateAppointment(appointmentId, payload, updatedBy, transportNeeded) {
+  try {
+    if (!appointmentId) throw new Error('Missing appointmentId');
+    payload = normalizePayload_(payload);
+
+    // resolve row index
+    const all = readAllAppointments_(); // returns array of objects
+    const idx = all.findIndex(r => String(r[CFG.COLS.ID] || '').trim() === String(appointmentId).trim());
+    if (idx < 0) throw new Error('Appointment not found for ID ' + appointmentId);
+
+    // Add meta
+    payload[CFG.COLS.NEEDS_SCHED] = 'Yes';
+    if (CFG.COLS.UPDATED_BY) payload[CFG.COLS.UPDATED_BY] = String(updatedBy || '');
+
+    // If your sheet stores transport in a column, set it here (optional)
+    if (CFG.COLS.TRANSPORT_NEEDED) payload[CFG.COLS.TRANSPORT_NEEDED] = (transportNeeded === 'Yes' ? 'Yes' : 'No');
+
+    // Write back to the sheet row (header row is 1, so +2)
+    const rowIndex = idx + 2;
+    updateAppointmentRow_(rowIndex, payload);
+
+    // Email if status == Scheduled
+    const status = String(payload[CFG.COLS.STATUS] || '');
+    if (status.toLowerCase() === 'scheduled') {
+      try {
+        sendAppointmentChangeEmail_(payload);
+      } catch (mailErr) {
+        Logger.log('sendAppointmentChangeEmail_() WARN: ' + mailErr);
+      }
+    }
+
+    return { ok: true };
+  } catch (err) {
+    Logger.log('apiUpdateAppointment() ERROR: ' + err + '\n' + err.stack);
+    return { ok: false, error: err.message || String(err) };
+  }
+}
+/**
+ * Determines whether a given date string (MM/dd/yyyy) is after today.
+ * Used to disable editing for same-day or past appointments.
+ */
+function isFutureDate_(dateStr) {
+  try {
+    if (!dateStr) return false;
+    const [m2, d2, y2] = String(dateStr).split('/').map(Number);
+    const target = new Date(y2, m2 - 1, d2);
+    
+    // Today's date in America/New_York, without time
+    const today = new Date();
+    const tzToday = Utilities.formatDate(today, 'America/New_York', 'MM/dd/yyyy');
+    const [m1, d1, y1] = tzToday.split('/').map(Number);
+    const nowDate = new Date(y1, m1 - 1, d1);
+
+    return target > nowDate;
+  } catch (err) {
+    Logger.log('isFutureDate_() ERROR: ' + err);
+    return false;
+  }
+}
+
+/* ------------------------------------------
+   GO ROGUE FEATURE
+   ------------------------------------------ */
+
+function apiCreateRogueAppointment(payload) {
+  try {
+    if (!CFG || !CFG.SHEET_ID) throw new Error('Configuration (CFG) not found.');
+    if (!payload || typeof payload !== 'object') throw new Error('Invalid payload');
+
+    Logger.log('[ROGUE] Creating exception appointment...');
+    
+    // 1. Generate ID
+    const newId = getNextAppointmentId_();
+    
+    // 2. Grant Logic (Zip Code Mapping)
+    // If ZIP = 14215 OR 14211 -> PFL. Else -> Incubator.
+    const zip = String(payload['Zip Code'] || '').trim();
+    const grant = (zip.includes('14215') || zip.includes('14211')) 
+                  ? 'PFL' 
+                  : 'Incubator';
+
+    // 3. Date & Time Parsing
+    const dateStr = payload['Date']; // Expecting MM/dd/yyyy from frontend
+    let dayOfWeek = '';
+    if (dateStr) {
+      // Parse date to get Day of Week
+      const parts = dateStr.split('/');
+      if (parts.length === 3) {
+        const d = new Date(+parts[2], +parts[0] - 1, +parts[1]); // y, m-1, d
+        dayOfWeek = Utilities.formatDate(d, Session.getScriptTimeZone(), 'EEEE');
+      }
+    }
+
+    // 4. Construct Full Record
+    const fullRecord = normalizePayload_({
+      ...payload,
+      [CFG.COLS.ID]: newId,
+      [CFG.COLS.GRANT]: grant,
+      [CFG.COLS.STATUS]: 'Reserved',
+      [CFG.COLS.NEEDS_SCHED]: 'Yes',
+      [CFG.COLS.DAY]: dayOfWeek,
+      // Date, Time, Type, Scheduler are already in payload, but we ensure keys match CFG
+      [CFG.COLS.DATE]: payload['Date'],
+      [CFG.COLS.TIME]: payload['Time'],
+      [CFG.COLS.AMPM]: payload['AM or PM'],
+      [CFG.COLS.TYPE]: payload['Appointment Type'],
+      [CFG.COLS.SCHEDULED_BY]: payload['Scheduled By'],
+      [CFG.COLS.UPDATED_BY]: payload['Scheduled By'], // Set creator as updater too
+      [CFG.COLS.CREATED_AT]: new Date()
+    });
+
+    // 5. Save to Sheet
+    appendNewAppointment_(fullRecord);
+
+    Logger.log(`[ROGUE] Success. ID: ${newId}`);
+    return { ok: true, id: newId };
+
+  } catch (err) {
+    Logger.log('apiCreateRogueAppointment() ERROR: ' + err + '\n' + err.stack);
+    return { ok: false, error: err.message || String(err) };
+  }
+}

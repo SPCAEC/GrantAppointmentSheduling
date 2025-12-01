@@ -27,19 +27,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const target = document.querySelector(`#view-${view}`);
     target.classList.remove('hidden');
 
-    if (view === 'schedule') {
-      // 🔹 Correct: use the actual function exported by who-are-you.js
-      if (typeof showWhoAreYouScreen === 'function') {
-        showWhoAreYouScreen(target, () => {
-          // callback after scheduler selection
-          if (typeof renderScheduleFlow === 'function') renderScheduleFlow(target);
-        });
-      } else if (typeof renderScheduleFlow === 'function') {
-        renderScheduleFlow(target); // fallback
-      }
+    // Handle "schedule" and "modify" flows with Who-Are-You interception
+    if ((view === 'schedule' || view === 'modify') && typeof showWhoAreYouScreen === 'function') {
+      showWhoAreYouScreen(target, () => {
+        if (view === 'schedule' && typeof renderScheduleFlow === 'function') {
+          renderScheduleFlow(target);
+        } else if (view === 'modify' && typeof renderModifyFlow === 'function') {
+          renderModifyFlow(target);
+        }
+      });
+    } else if (view === 'schedule' && typeof renderScheduleFlow === 'function') {
+      renderScheduleFlow(target);
+    } else if (view === 'modify' && typeof renderModifyFlow === 'function') {
+      renderModifyFlow(target);
     }
   }
 
+  // ─── Section title resolver ─────────────────────
   function viewTitle(view) {
     return {
       schedule: 'Schedule New Appointment',
@@ -49,7 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }[view] || '';
   }
 
-  // Expose globally so other modules (like who-are-you) can hook in
+  // Expose globally so Who-Are-You and others can intercept
   window.openView = openView;
 });
 </script>

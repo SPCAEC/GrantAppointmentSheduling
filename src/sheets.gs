@@ -151,6 +151,40 @@ function getAvailableSlots_(type, limit) {
   return sliced;
 }
 
+function getNextAppointmentId_() {
+  const sh = getSheet_();
+  const lastRow = sh.getLastRow();
+  if (lastRow < 2) return 'AID000000001'; // First ever record
+
+  const { headers } = getHeaderMap_(sh);
+  const idColIdx = headers.indexOf(CFG.COLS.ID.toLowerCase());
+  
+  if (idColIdx === -1) throw new Error('Appointment ID column not found');
+
+  // Get the last value in the ID column
+  const lastIdVal = sh.getRange(lastRow, idColIdx + 1).getValue();
+  const numericPart = String(lastIdVal).replace(/\D/g, '');
+  
+  if (!numericPart) return 'AID000000001'; // Fallback if format is weird
+  
+  const nextNum = parseInt(numericPart, 10) + 1;
+  return 'AID' + String(nextNum).padStart(9, '0');
+}
+
+function appendNewAppointment_(dataObj) {
+  const sh = getSheet_();
+  const { headers } = getHeaderMap_(sh);
+  
+  const rowData = headers.map(h => {
+    // Match header key to data object key (case-insensitive)
+    const key = Object.keys(dataObj).find(k => k.toLowerCase() === h);
+    return key ? dataObj[key] : '';
+  });
+
+  sh.appendRow(rowData);
+  Logger.log(`[APPEND] Added new row: ${JSON.stringify(rowData)}`);
+}
+
 /**
  * Updates a specific appointment row by index with new data.
  */
@@ -184,4 +218,66 @@ function updateAppointmentRow_(rowIndex, data) {
 
   sh.getRange(rowIndex, 1, 1, lastCol).setValues([updatedRow]);
   Logger.log(`updateAppointmentRow_: Updated row ${rowIndex}`);
+}
+/**
+ * Exact (case-insensitive) match helper
+ */
+function eqi_(a, b) {
+  if (!a || !b) return false;
+  return String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+}
+
+/**
+ * Turn "First", "Last", or "First Last" into a matcher against sheet's First/Last.
+ */
+function clientMatches_(row, clientInput) {
+  if (!clientInput) return true; // not provided
+  const first = String(row[CFG.COLS.FIRST] || '');
+  const last  = String(row[CFG.COLS.LAST] || '');
+  const parts = String(clientInput).trim().split(/\s+/);
+  if (parts.length === 1) {
+    return eqi_(first, parts[0]) || eqi_(last, parts[0]);
+  }
+  // 2+ parts → compare joined full name
+  const full = (first + ' ' + last).trim();
+  return eqi_(full, parts.join(' '));
+}
+
+/**
+ * Today (America/New_York) and date comparison
+ * Sheet stores date as 'MM/dd/yyyy' text. Same-day NOT editable.
+ */
+function isFutureDate_(mmddyyyy) {
+  const tz = Session.getScriptTimeZone() || 'America/New_York';
+  const today = new Date(Utilities.formatDate(new Date(), tz, 'MM/dd/yyyy')); // midnight local
+  const d = parseMMDDYYYY_(mmddyyyy, tz);
+  if (!d) return false; // invalid text -> treat as not editable
+  // Future strictly greater than today
+  return d.getTime() > today.getTime();
+}
+
+function parseMMDDYYYY_(s, tz) {
+  if (!s) return null;
+  const m = String(s).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return null;
+  const mm = +m[1], dd = +m[2], yyyy = +m[3];
+  const d = new Date(yyyy, mm - 1, dd);
+  // sanity check
+  if (d.getFullYear() !== yyyy || (d.getMonth()+1) !== mm || d.getDate() !== dd) return null;
+  // normalize to local midnight
+  return new Date(Utilities.formatDate(d, tz, 'MM/dd/yyyy'));
+}
+
+/**
+ * Search core — any combination of date, client, pet (exact case-insensitive)
+ */
+function searchAppointments_(dateStr, clientInput, petName) {
+  const all = readAllAppointments_(); // objects keyed by header text
+  const out = all.filter(r => {
+    const dateOk   = dateStr ? eqi_(String(r[CFG.COLS.DATE] || ''), dateStr) : true;
+    const clientOk = clientMatches_(r, clientInput || '');
+    const petOk    = petName ? eqi_(String(r[CFG.COLS.PET_NAME] || ''), petName) : true;
+    return dateOk && clientOk && petOk;
+  });
+  return out;
 }
