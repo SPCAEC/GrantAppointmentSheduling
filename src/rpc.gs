@@ -509,3 +509,90 @@ function apiCreateRogueAppointment(payload) {
     return { ok: false, error: err.message || String(err) };
   }
 }
+/* ------------------------------------------
+   CANCEL / RELEASE FLOW
+   ------------------------------------------ */
+
+/**
+ * Cancels an appointment by clearing Client/Pet data and resetting status to 'Available'.
+ * Records the cancellation reason.
+ */
+function apiCancelAppointment(appointmentId, reason, cancelledBy) {
+  try {
+    if (!appointmentId) throw new Error('Missing Appointment ID');
+    if (!reason) throw new Error('Missing Cancellation Reason');
+
+    // 1. Find the row
+    const all = readAllAppointments_();
+    const idx = all.findIndex(r => String(r[CFG.COLS.ID] || '').trim() === String(appointmentId).trim());
+    if (idx < 0) throw new Error('Appointment not found');
+    
+    // 2. Validate Future Date (Server-side check)
+    const rowDate = all[idx][CFG.COLS.DATE]; // Date object or string
+    let dateStr = '';
+    if (rowDate instanceof Date) dateStr = Utilities.formatDate(rowDate, Session.getScriptTimeZone(), 'MM/dd/yyyy');
+    else dateStr = String(rowDate);
+    
+    if (!isFutureDate_(dateStr)) {
+      throw new Error('Cannot cancel past appointments.');
+    }
+
+    // 3. Construct the "Wipe" Payload
+    // We explicitly set these to empty strings to clear the cell
+    const clearFields = {
+      [CFG.COLS.FIRST]: '',
+      [CFG.COLS.LAST]: '',
+      [CFG.COLS.EMAIL]: '',
+      [CFG.COLS.PHONE]: '',
+      [CFG.COLS.ADDRESS]: '',
+      [CFG.COLS.CITY]: '',
+      [CFG.COLS.STATE]: '',
+      [CFG.COLS.ZIP]: '',
+      [CFG.COLS.TRANSPORT_NEEDED]: '',
+      
+      [CFG.COLS.PET_NAME]: '',
+      [CFG.COLS.SPECIES]: '',
+      [CFG.COLS.BREED_ONE]: '',
+      [CFG.COLS.BREED_TWO]: '',
+      [CFG.COLS.COLOR]: '',
+      [CFG.COLS.COLOR_PATTERN]: '',
+      [CFG.COLS.VACCINES]: '',
+      [CFG.COLS.ADDITIONAL_SERVICES]: '',
+      [CFG.COLS.PREV_RECORDS]: 'No', // Default back to No
+      [CFG.COLS.VET_OFFICE]: '',
+      [CFG.COLS.SCHEDULED_BY]: '', // Clear the scheduler
+      
+      // We assume Sex/Altered/Age/Weight/Notes/Allergies match header names in sheet 
+      // or are mapped via helper if they differ. 
+      // Based on your previous files, these keys are direct:
+      'Sex': '',
+      'Spayed or Neutered': '',
+      'Age': '',
+      'Weight': '',
+      'Allergies or Sensitivities': '',
+      'Notes': ''
+    };
+
+    // 4. Construct the "Update" Payload
+    const updateFields = {
+      [CFG.COLS.STATUS]: 'Available', // Reset to Available
+      [CFG.COLS.NEEDS_SCHED]: 'No',
+      [CFG.COLS.CANCELLATION_REASON]: reason,
+      [CFG.COLS.UPDATED_BY]: cancelledBy,
+      [CFG.COLS.UPDATED_AT]: new Date()
+    };
+
+    // Merge them
+    const finalPayload = { ...clearFields, ...updateFields };
+
+    // 5. Write to Sheet (Header row is 1, so row index is idx + 2)
+    updateAppointmentRow_(idx + 2, finalPayload);
+    
+    Logger.log(`[CANCEL] ID ${appointmentId} released by ${cancelledBy}. Reason: ${reason}`);
+    return { ok: true };
+
+  } catch (err) {
+    Logger.log('apiCancelAppointment() ERROR: ' + err);
+    return { ok: false, error: err.message };
+  }
+}

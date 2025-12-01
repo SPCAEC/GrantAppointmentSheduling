@@ -41,6 +41,9 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (view === 'modify' && typeof renderModifyFlow === 'function') {
       renderModifyFlow(target);
     }
+    } else if (view === 'cancel' && typeof renderCancelFlow === 'function') {
+       renderCancelFlow(target);
+    }
   }
 
   // ─── Section title resolver ─────────────────────

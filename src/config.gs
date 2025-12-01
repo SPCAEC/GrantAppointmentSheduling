@@ -49,6 +49,7 @@ const CFG = {
     ADDITIONAL_SERVICES: 'Additional Services',
     PREV_RECORDS: 'Previous Vet Records',
     VET_OFFICE: 'Vet Office Name',
+    CANCELLATION_REASON: 'Cancellation Reason',
 
     // ─── Optional Timestamp ────────────────────
     UPDATED_AT: 'Updated At'

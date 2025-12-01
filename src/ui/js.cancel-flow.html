@@ -1,0 +1,180 @@
+<script>
+(function () {
+  const { $, SCHEDULER } = window.SPCA || {};
+  
+  // Public Entry
+  window.renderCancelFlow = function(container) {
+    // Identity Check
+    if (typeof getSchedulerName === 'function' && !getSchedulerName()) {
+      if (typeof showWhoAreYouScreen === 'function') {
+        return showWhoAreYouScreen(container, () => renderCancelFlow(container));
+      }
+    }
+    renderSearch(container);
+  };
+
+  // 1. Search Screen (Identical layout to Modify)
+  function renderSearch(container) {
+    container.innerHTML = `
+        <div class="schedule-step">
+        <h2>Find an Appointment to Cancel</h2>
+        <div class="grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem;">
+            <div class="field"><label>Date (MM/DD/YYYY)</label><input id="cDate" type="text"></div>
+            <div class="field"><label>Client Name</label><input id="cClient" type="text"></div>
+            <div class="field"><label>Pet Name</label><input id="cPet" type="text"></div>
+        </div>
+        <div class="actions">
+            <button id="cSearchBtn" class="btn">Search</button>
+            <button id="cClearBtn" class="btn secondary">Clear</button>
+        </div>
+        <div id="cResults" style="margin-top:1rem;"></div>
+        </div>
+    `;
+
+    const results = container.querySelector('#cResults');
+
+    container.querySelector('#cSearchBtn').addEventListener('click', () => {
+      results.innerHTML = `<div class="spinner"></div>`;
+      google.script.run
+        .withSuccessHandler(res => {
+          if (!res || !res.ok) {
+            results.innerHTML = `<p class="error">${res?.error || 'Search failed.'}</p>`;
+            return;
+          }
+          renderResults(container, results, res.rows || []);
+        })
+        .apiSearchAppointments({
+          date: container.querySelector('#cDate').value.trim(),
+          client: container.querySelector('#cClient').value.trim(),
+          pet: container.querySelector('#cPet').value.trim()
+        });
+    });
+
+    container.querySelector('#cClearBtn').addEventListener('click', () => {
+      container.querySelector('#cDate').value = '';
+      container.querySelector('#cClient').value = '';
+      container.querySelector('#cPet').value = '';
+      results.innerHTML = '';
+    });
+  }
+
+  // 2. Results
+  function renderResults(container, target, rows) {
+    target.innerHTML = '';
+    if (!rows.length) {
+      target.innerHTML = `<p style="opacity:.7;">No appointments found.</p>`;
+      return;
+    }
+
+    const grid = document.createElement('div');
+    grid.className = 'card-grid';
+    target.appendChild(grid);
+
+    rows.forEach(r => {
+      // Logic: Can only cancel "Scheduled" or "Reserved" (not completed/cancelled)
+      // AND must be future date
+      const isCancellable = r.editable && (r.status === 'Scheduled' || r.status === 'Reserved');
+      
+      const card = document.createElement('div');
+      card.className = 'card';
+      if (!isCancellable) card.style.opacity = 0.6;
+
+      card.innerHTML = `
+        <div style="font-weight:600; margin-bottom:4px;">${r.firstName} ${r.lastName} — ${r.petName}</div>
+        <div>${r.date} ${r.time}</div>
+        <div>Status: <strong>${r.status}</strong></div>
+        <div style="font-size:.85rem; opacity:.65;">ID: ${r.id}</div>
+        ${!isCancellable ? `<div style="margin-top:.5rem; color:#92400e; font-size:0.9rem; background:#fffbea; padding:4px;">Not cancellable</div>` : ``}
+      `;
+
+      if (isCancellable) {
+        card.style.cursor = 'pointer';
+        card.addEventListener('click', () => showCancelModal(container, r));
+      }
+      grid.appendChild(card);
+    });
+  }
+
+  // 3. Cancel Modal
+  function showCancelModal(container, row) {
+    // Remove existing
+    document.querySelectorAll('.modal').forEach(m => m.remove());
+
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal-content" style="border-top: 6px solid #dc2626;">
+        <h2 style="color:#b91c1c;">Cancel Appointment</h2>
+        <div style="text-align:left; background:#f9fafb; padding:1rem; border-radius:8px; margin-bottom:1rem;">
+          <p><strong>Client:</strong> ${row.firstName} ${row.lastName}</p>
+          <p><strong>Pet:</strong> ${row.petName}</p>
+          <p><strong>Slot:</strong> ${row.date} at ${row.time}</p>
+        </div>
+        
+        <div class="field" style="text-align:left;">
+          <label>Reason for Cancellation <span style="color:red">*</span></label>
+          <select id="cancelReason">
+            <option value="">— Select Reason —</option>
+            <option>No longer interested</option>
+            <option>Found alternate vet or clinic</option>
+            <option>Pet Deceased</option>
+            <option>No longer has animal</option>
+            <option>Changed mind</option>
+          </select>
+        </div>
+
+        <p style="font-size:0.9rem; color:#666; margin-top:1rem;">
+          This will release the slot back to "Available" and clear all client data.
+        </p>
+
+        <div class="actions">
+          <button id="btnConfirmCancel" class="btn" style="background:#dc2626;" disabled>Confirm Cancellation</button>
+          <button id="btnExitCancel" class="btn secondary">Back</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const select = modal.querySelector('#cancelReason');
+    const confirm = modal.querySelector('#btnConfirmCancel');
+
+    select.addEventListener('change', () => {
+      confirm.disabled = !select.value;
+    });
+
+    modal.querySelector('#btnExitCancel').addEventListener('click', () => modal.remove());
+
+    confirm.addEventListener('click', () => {
+      confirm.classList.add('loading');
+      const reason = select.value;
+      const user = window.getSchedulerName ? window.getSchedulerName() : 'Staff';
+
+      google.script.run
+        .withSuccessHandler(res => {
+          modal.remove();
+          if (!res || !res.ok) {
+            alert('Error: ' + (res?.error || 'Failed to cancel'));
+            return;
+          }
+          // Success Screen
+          container.innerHTML = `
+            <div style="text-align:center; padding:3rem;">
+              <div style="font-size:4rem;">🗑️</div>
+              <h2>Appointment Cancelled & Released</h2>
+              <p>The slot is now Available for booking.</p>
+              <div class="actions" style="justify-content:center; margin-top:2rem;">
+                <button class="btn" onclick="window.renderCancelFlow(document.querySelector('#view-cancel'))">Return to Search</button>
+              </div>
+            </div>
+          `;
+        })
+        .withFailureHandler(err => {
+          modal.remove();
+          alert('Server error: ' + err);
+        })
+        .apiCancelAppointment(row.id, reason, user);
+    });
+  }
+
+})();
+</script>
