@@ -212,44 +212,52 @@ function appendNewAppointment_(dataObj) {
 
 /**
  * Updates a specific appointment row by index with new data.
+ * FIXES: Handles aliases (Phone vs Phone Number) and Case-Insensitivity.
  */
 function updateAppointmentRow_(rowIndex, data) {
   const sh = getSheet_();
-  const { headers } = getHeaderMap_(sh);
+  const { headers } = getHeaderMap_(sh); // headers is array of actual sheet strings
   const lastCol = headers.length;
 
-  // Read the current row
+  // Read the current row so we don't overwrite columns we aren't touching
   const existingRow = sh.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
   const updatedRow = existingRow.slice();
 
-  // Normalize Address/Zip aliases if needed
-  const normalizedData = {};
+  // 1. Create a Normalized Data Map (Handle Aliases)
+  const dataMap = {};
   Object.keys(data || {}).forEach(k => {
-    let key = k;
-    if (/zip code/i.test(k)) key = 'Zip Code';
-    if (/address/i.test(k)) key = 'Address';
-    normalizedData[key] = data[k];
+    const val = data[k];
+    const kLow = k.toLowerCase().trim();
+    
+    dataMap[kLow] = val; // Store lowercased key
+    
+    // Explicit Aliases for common mismatches
+    if (kLow === 'phone') dataMap['phone number'] = val;
+    if (kLow === 'zip') dataMap['zip code'] = val;
+    if (kLow === 'address') dataMap['street address'] = val;
+    // Handle "Previous Vet Records" vs "Prev Records" if needed
+    if (kLow.includes('record')) dataMap['previous vet records'] = val;
   });
 
+  // 2. Loop Headers and find matching data
   headers.forEach((h, i) => {
-    if (normalizedData[h] !== undefined) updatedRow[i] = normalizedData[h];
+    const hLow = String(h).toLowerCase().trim();
+    
+    // If our dataMap has an entry for this header, use it
+    if (dataMap.hasOwnProperty(hLow)) {
+      updatedRow[i] = dataMap[hLow];
+    }
   });
 
-  // Optional timestamp
-  if (CFG.COLS.UPDATED_AT && headers.includes(CFG.COLS.UPDATED_AT)) {
-    const idx = headers.indexOf(CFG.COLS.UPDATED_AT);
-    updatedRow[idx] = new Date();
+  // 3. Optional Timestamp
+  if (CFG.COLS.UPDATED_AT) {
+    const tsKey = CFG.COLS.UPDATED_AT.toLowerCase();
+    const idx = headers.findIndex(h => h.toLowerCase() === tsKey);
+    if (idx !== -1) updatedRow[idx] = new Date();
   }
 
   sh.getRange(rowIndex, 1, 1, lastCol).setValues([updatedRow]);
   Logger.log(`updateAppointmentRow_: Updated row ${rowIndex}`);
-}
-/**
- * Exact (case-insensitive) match helper
- */
-function eqi_(a, b) {
-  if (!a || !b) return false;
-  return String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
 }
 
 /**
