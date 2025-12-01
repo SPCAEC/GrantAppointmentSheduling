@@ -151,21 +151,37 @@ function getAvailableSlots_(type, limit) {
   return sliced;
 }
 
+/**
+ * Generates the next Appointment ID based on the last row.
+ * Format: AID######### (e.g., AID000000600)
+ */
 function getNextAppointmentId_() {
   const sh = getSheet_();
   const lastRow = sh.getLastRow();
   if (lastRow < 2) return 'AID000000001'; // First ever record
 
-  const { headers } = getHeaderMap_(sh);
-  const idColIdx = headers.indexOf(CFG.COLS.ID.toLowerCase());
+  // FIX: Use 'map' for case-insensitive lookup, not 'headers' array
+  const { map } = getHeaderMap_(sh);
+  const targetKey = CFG.COLS.ID.toLowerCase().trim();
   
-  if (idColIdx === -1) throw new Error('Appointment ID column not found');
+  // map stores { 'appointment id': 0, 'date': 1, ... }
+  const idColIdx = map[targetKey];
+  
+  if (idColIdx === undefined) {
+    Logger.log(`[ERROR] Looking for header key: "${targetKey}"`);
+    Logger.log(`[ERROR] Available keys in map: ${Object.keys(map).join(', ')}`);
+    throw new Error(`Appointment ID column "${CFG.COLS.ID}" not found in sheet.`);
+  }
 
-  // Get the last value in the ID column
+  // Get the last value in the ID column (Index is 0-based, getRange is 1-based)
   const lastIdVal = sh.getRange(lastRow, idColIdx + 1).getValue();
-  const numericPart = String(lastIdVal).replace(/\D/g, '');
   
-  if (!numericPart) return 'AID000000001'; // Fallback if format is weird
+  // Handle empty or malformed previous IDs safely
+  const numericPart = String(lastIdVal).replace(/\D/g, '');
+  if (!numericPart) {
+    Logger.log('[WARN] Last ID was empty or invalid. Defaulting to AID000000001.');
+    return 'AID000000001'; 
+  }
   
   const nextNum = parseInt(numericPart, 10) + 1;
   return 'AID' + String(nextNum).padStart(9, '0');
