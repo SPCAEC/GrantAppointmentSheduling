@@ -187,18 +187,27 @@ function getNextAppointmentId_() {
   return 'AID' + String(nextNum).padStart(9, '0');
 }
 
+/**
+ * Appends a new appointment row to the bottom of the sheet.
+ * Used for "Go Rogue" flow.
+ */
 function appendNewAppointment_(dataObj) {
   const sh = getSheet_();
   const { headers } = getHeaderMap_(sh);
   
   const rowData = headers.map(h => {
-    // Match header key to data object key (case-insensitive)
-    const key = Object.keys(dataObj).find(k => k.toLowerCase() === h);
-    return key ? dataObj[key] : '';
+    // FIX: Compare lowercase key to lowercase header
+    const key = Object.keys(dataObj).find(k => k.toLowerCase() === String(h).toLowerCase());
+    
+    // Log if we miss data we expected to have (for debugging)
+    const val = key ? dataObj[key] : '';
+    return val;
   });
 
+  // Log the actual data being written so we can verify it's not empty this time
+  Logger.log(`[APPEND] Writing row data: ${JSON.stringify(rowData)}`);
+  
   sh.appendRow(rowData);
-  Logger.log(`[APPEND] Added new row: ${JSON.stringify(rowData)}`);
 }
 
 /**
