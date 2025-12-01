@@ -282,45 +282,98 @@ function apiUploadVetRecord(filename, base64Data, folderId) {
   }
 }
 /**
- * Search existing appointments by exact (case-insensitive) match on any of:
- * - date (MM/dd/yyyy string)
- * - client (first, last, or "first last")
- * - pet
+ * Search existing appointments by exact (case-insensitive) match on query params.
+ * FIXES: 
+ * 1. Filters out past appointments.
+ * 2. Properly handles Date objects to ensure future dates are editable.
+ * 3. Formats dates as MM/dd/yyyy for the frontend.
  */
 function apiSearchAppointments(query) {
   try {
     const { date, client, pet } = query || {};
-    const rows = searchAppointments_(date, client, pet).map(r => ({
-      id: String(r[CFG.COLS.ID] || ''),
-      date: String(r[CFG.COLS.DATE] || ''),
-      time: `${r[CFG.COLS.TIME] || ''} ${r[CFG.COLS.AMPM] || ''}`.trim(),
-      status: String(r[CFG.COLS.STATUS] || ''),
-      firstName: String(r[CFG.COLS.FIRST] || ''),
-      lastName: String(r[CFG.COLS.LAST] || ''),
-      email: String(r[CFG.COLS.EMAIL] || ''),
-      phone: String(r[CFG.COLS.PHONE] || ''),
-      address: String(r[CFG.COLS.ADDRESS] || ''),
-      city: String(r[CFG.COLS.CITY] || ''),
-      state: String(r[CFG.COLS.STATE] || ''),
-      zip: String(r[CFG.COLS.ZIP] || ''),
-      petName: String(r[CFG.COLS.PET_NAME] || ''),
-      species: String(r[CFG.COLS.SPECIES] || ''),
-      breedOne: String(r[CFG.COLS.BREED_ONE] || ''),
-      breedTwo: String(r[CFG.COLS.BREED_TWO] || ''),
-      color: String(r[CFG.COLS.COLOR] || ''),
-      colorPattern: String(r[CFG.COLS.COLOR_PATTERN] || ''),
-      sex: String(r['Sex'] || ''), // if you have a COLS.SEX, swap in
-      altered: String(r['Spayed or Neutered'] || ''), // same note
-      age: String(r['Age'] || ''),
-      vaccines: String(r[CFG.COLS.VACCINES] || ''),
-      additionalServices: String(r[CFG.COLS.ADDITIONAL_SERVICES] || ''),
-      allergies: String(r['Allergies or Sensitivities'] || ''),
-      weight: String(r['Weight'] || ''),
-      notes: String(r['Notes'] || ''),
-      prevRecords: String(r[CFG.COLS.PREV_RECORDS] || ''),
-      vetOffice: String(r[CFG.COLS.VET_OFFICE] || ''),
-      editable: isFutureDate_(String(r[CFG.COLS.DATE] || ''))
-    }));
+    
+    // 1. Get "Today" at midnight for comparison
+    const tz = Session.getScriptTimeZone() || 'America/New_York';
+    const now = new Date();
+    // Reset 'now' to midnight to compare dates fairly
+    const today = new Date(Utilities.formatDate(now, tz, 'yyyy-MM-dd').replace(/-/g, '/'));
+
+    // Get raw rows (keyed by header name)
+    const rawRows = searchAppointments_(date, client, pet);
+
+    const rows = rawRows.reduce((acc, r) => {
+      // 2. Extract and Normalize Date
+      let val = r[CFG.COLS.DATE];
+      let rowDate = null;
+
+      // Handle Sheet Date Object vs String
+      if (val instanceof Date) {
+        rowDate = val;
+      } else if (typeof val === 'string') {
+        // Attempt parsing MM/dd/yyyy if it's text
+        const parts = val.trim().split('/');
+        if (parts.length === 3) {
+          rowDate = new Date(+parts[2], +parts[0] - 1, +parts[1]);
+        }
+      }
+
+      // If invalid date, skip it to be safe
+      if (!rowDate || isNaN(rowDate.getTime())) return acc;
+
+      // Normalize rowDate to midnight (removes time/TZ noise)
+      const rowDateStr = Utilities.formatDate(rowDate, tz, 'yyyy-MM-dd');
+      const rowDateMidnight = new Date(rowDateStr.replace(/-/g, '/'));
+
+      // 3. Filter: Hide Past Appointments
+      // Requirement: "we should not return results for appointments in the past"
+      if (rowDateMidnight.getTime() < today.getTime()) {
+        return acc;
+      }
+
+      // 4. Calculate Editable
+      // Requirement: "not editable (on or before today)"
+      // So strictly future dates ( > today) are editable
+      const isEditable = rowDateMidnight.getTime() > today.getTime();
+
+      // 5. Format Date String for Frontend (MM/dd/yyyy)
+      const dateDisplay = Utilities.formatDate(rowDate, tz, 'MM/dd/yyyy');
+
+      // 6. Map Fields
+      acc.push({
+        id: String(r[CFG.COLS.ID] || ''),
+        date: dateDisplay, 
+        time: `${r[CFG.COLS.TIME] || ''} ${r[CFG.COLS.AMPM] || ''}`.trim(),
+        status: String(r[CFG.COLS.STATUS] || ''),
+        firstName: String(r[CFG.COLS.FIRST] || ''),
+        lastName: String(r[CFG.COLS.LAST] || ''),
+        email: String(r[CFG.COLS.EMAIL] || ''),
+        phone: String(r[CFG.COLS.PHONE] || ''),
+        address: String(r[CFG.COLS.ADDRESS] || ''),
+        city: String(r[CFG.COLS.CITY] || ''),
+        state: String(r[CFG.COLS.STATE] || ''),
+        zip: String(r[CFG.COLS.ZIP] || ''),
+        petName: String(r[CFG.COLS.PET_NAME] || ''),
+        species: String(r[CFG.COLS.SPECIES] || ''),
+        breedOne: String(r[CFG.COLS.BREED_ONE] || ''),
+        breedTwo: String(r[CFG.COLS.BREED_TWO] || ''),
+        color: String(r[CFG.COLS.COLOR] || ''),
+        colorPattern: String(r[CFG.COLS.COLOR_PATTERN] || ''),
+        sex: String(r['Sex'] || ''),
+        altered: String(r['Spayed or Neutered'] || ''),
+        age: String(r['Age'] || ''),
+        vaccines: String(r[CFG.COLS.VACCINES] || ''),
+        additionalServices: String(r[CFG.COLS.ADDITIONAL_SERVICES] || ''),
+        allergies: String(r['Allergies or Sensitivities'] || ''),
+        weight: String(r['Weight'] || ''),
+        notes: String(r['Notes'] || ''),
+        prevRecords: String(r[CFG.COLS.PREV_RECORDS] || ''),
+        vetOffice: String(r[CFG.COLS.VET_OFFICE] || ''),
+        editable: isEditable
+      });
+      
+      return acc;
+    }, []);
+
     return { ok: true, rows };
   } catch (err) {
     Logger.log('apiSearchAppointments() ERROR: ' + err + '\n' + err.stack);
