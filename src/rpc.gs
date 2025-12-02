@@ -288,57 +288,47 @@ function apiUploadVetRecord(filename, base64Data, folderId) {
  * 2. Properly handles Date objects to ensure future dates are editable.
  * 3. Formats dates as MM/dd/yyyy for the frontend.
  */
-function apiSearchAppointments(query) {
+/* ------------------------------------------
+   SEARCH UPDATED (Supports 'includePast' flag)
+   ------------------------------------------ */
+function apiSearchAppointments(query, includePast = false) {
   try {
     const { date, client, pet } = query || {};
-    
-    // 1. Get "Today" at midnight for comparison
     const tz = Session.getScriptTimeZone() || 'America/New_York';
+    
+    // "Today" at midnight
     const now = new Date();
-    // Reset 'now' to midnight to compare dates fairly
     const today = new Date(Utilities.formatDate(now, tz, 'yyyy-MM-dd').replace(/-/g, '/'));
 
-    // Get raw rows (keyed by header name)
     const rawRows = searchAppointments_(date, client, pet);
 
     const rows = rawRows.reduce((acc, r) => {
-      // 2. Extract and Normalize Date
       let val = r[CFG.COLS.DATE];
       let rowDate = null;
 
-      // Handle Sheet Date Object vs String
       if (val instanceof Date) {
         rowDate = val;
       } else if (typeof val === 'string') {
-        // Attempt parsing MM/dd/yyyy if it's text
         const parts = val.trim().split('/');
-        if (parts.length === 3) {
-          rowDate = new Date(+parts[2], +parts[0] - 1, +parts[1]);
-        }
+        if (parts.length === 3) rowDate = new Date(+parts[2], +parts[0] - 1, +parts[1]);
       }
 
-      // If invalid date, skip it to be safe
       if (!rowDate || isNaN(rowDate.getTime())) return acc;
 
-      // Normalize rowDate to midnight (removes time/TZ noise)
       const rowDateStr = Utilities.formatDate(rowDate, tz, 'yyyy-MM-dd');
       const rowDateMidnight = new Date(rowDateStr.replace(/-/g, '/'));
 
-      // 3. Filter: Hide Past Appointments
-      // Requirement: "we should not return results for appointments in the past"
-      if (rowDateMidnight.getTime() < today.getTime()) {
+      // FILTER LOGIC:
+      // If includePast is FALSE (Booking/Modify/Cancel), hide past dates.
+      // If includePast is TRUE (Outcome), show everything.
+      if (!includePast && rowDateMidnight.getTime() < today.getTime()) {
         return acc;
       }
 
-      // 4. Calculate Editable
-      // Requirement: "not editable (on or before today)"
-      // So strictly future dates ( > today) are editable
+      // Editable logic remains same (only future is editable)
       const isEditable = rowDateMidnight.getTime() > today.getTime();
-
-      // 5. Format Date String for Frontend (MM/dd/yyyy)
       const dateDisplay = Utilities.formatDate(rowDate, tz, 'MM/dd/yyyy');
 
-      // 6. Map Fields
       acc.push({
         id: String(r[CFG.COLS.ID] || ''),
         date: dateDisplay, 
@@ -346,30 +336,8 @@ function apiSearchAppointments(query) {
         status: String(r[CFG.COLS.STATUS] || ''),
         firstName: String(r[CFG.COLS.FIRST] || ''),
         lastName: String(r[CFG.COLS.LAST] || ''),
-        email: String(r[CFG.COLS.EMAIL] || ''),
-        phone: String(r[CFG.COLS.PHONE] || ''),
-        address: String(r[CFG.COLS.ADDRESS] || ''),
-        city: String(r[CFG.COLS.CITY] || ''),
-        state: String(r[CFG.COLS.STATE] || ''),
-        zip: String(r[CFG.COLS.ZIP] || ''),
         petName: String(r[CFG.COLS.PET_NAME] || ''),
-        species: String(r[CFG.COLS.SPECIES] || ''),
-        breedOne: String(r[CFG.COLS.BREED_ONE] || ''),
-        breedTwo: String(r[CFG.COLS.BREED_TWO] || ''),
-        color: String(r[CFG.COLS.COLOR] || ''),
-        colorPattern: String(r[CFG.COLS.COLOR_PATTERN] || ''),
-        sex: String(r['Sex'] || ''),
-        altered: String(r['Spayed or Neutered'] || ''),
-        age: String(r['Age'] || ''),
-        vaccines: String(r[CFG.COLS.VACCINES] || ''),
-        additionalServices: String(r[CFG.COLS.ADDITIONAL_SERVICES] || ''),
-        allergies: String(r['Allergies or Sensitivities'] || ''),
-        weight: String(r['Weight'] || ''),
-        notes: String(r['Notes'] || ''),
-        prevRecords: String(r[CFG.COLS.PREV_RECORDS] || ''),
-        vetOffice: String(r[CFG.COLS.VET_OFFICE] || ''),
-        transportNeeded: String(r[CFG.COLS.TRANSPORT_NEEDED] || ''),
-        editable: isEditable
+        // ... (Include other fields if needed for display) ...
       });
       
       return acc;
@@ -377,8 +345,55 @@ function apiSearchAppointments(query) {
 
     return { ok: true, rows };
   } catch (err) {
-    Logger.log('apiSearchAppointments() ERROR: ' + err + '\n' + err.stack);
-    return { ok: false, error: err.message || String(err) };
+    Logger.log('apiSearchAppointments error: ' + err);
+    return { ok: false, error: err.message };
+  }
+}
+
+/* ------------------------------------------
+   LOG OUTCOME
+   ------------------------------------------ */
+/* ------------------------------------------
+   LOG OUTCOME (Updated for Drive Storage)
+   ------------------------------------------ */
+function apiLogOutcome(appointmentId, outcome, textNote, htmlNote, user) {
+  try {
+    if (!appointmentId) throw new Error('Missing ID');
+    
+    // 1. Find Row
+    const all = readAllAppointments_();
+    const idx = all.findIndex(r => String(r[CFG.COLS.ID] || '').trim() === String(appointmentId).trim());
+    if (idx < 0) throw new Error('Appointment not found');
+
+    // 2. Save Rich Text to Drive
+    let fileId = '';
+    if (htmlNote && htmlNote.trim().length > 0) {
+      const folder = DriveApp.getFolderById(CFG.OUTCOME_NOTES_FOLDER_ID);
+      const fileName = `Note_${appointmentId}_${outcome}.html`;
+      
+      // Create HTML file
+      const file = folder.createFile(fileName, htmlNote, MimeType.HTML);
+      fileId = file.getId();
+    }
+
+    // 3. Build Payload
+    const payload = {
+      [CFG.COLS.APPT_OUTCOME]: outcome,
+      [CFG.COLS.APPT_NOTES]: textNote,      // Plain text for human readability in sheet
+      [CFG.COLS.APPT_NOTES_FILE_ID]: fileId,// Reference to the fancy version
+      [CFG.COLS.STATUS]: outcome,
+      [CFG.COLS.NEEDS_SCHED]: 'No',
+      [CFG.COLS.UPDATED_BY]: user,
+      [CFG.COLS.UPDATED_AT]: new Date()
+    };
+
+    // 4. Update Sheet
+    updateAppointmentRow_(idx + 2, payload);
+    
+    return { ok: true };
+  } catch (err) {
+    Logger.log('apiLogOutcome error: ' + err);
+    return { ok: false, error: err.message };
   }
 }
 
@@ -558,7 +573,7 @@ function apiCancelAppointment(appointmentId, reason, cancelledBy) {
       [CFG.COLS.COLOR_PATTERN]: '',
       [CFG.COLS.VACCINES]: '',
       [CFG.COLS.ADDITIONAL_SERVICES]: '',
-      [CFG.COLS.PREV_RECORDS]: 'No', // Default back to No
+      [CFG.COLS.PREV_RECORDS]: '',
       [CFG.COLS.VET_OFFICE]: '',
       [CFG.COLS.SCHEDULED_BY]: '', // Clear the scheduler
       

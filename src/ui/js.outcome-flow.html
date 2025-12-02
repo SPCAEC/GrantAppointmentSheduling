@@ -1,0 +1,235 @@
+<script>
+(function () {
+  const { $, sectionTitle } = window.SPCA || {};
+
+  // ─── PUBLIC ENTRY POINT ────────────────────────────────
+  window.renderOutcomeFlow = function(container) {
+    // 1. Identity Check
+    // If no scheduler name is set, force the "Who are you?" screen first
+    if (typeof getSchedulerName === 'function' && !getSchedulerName()) {
+      if (typeof showWhoAreYouScreen === 'function') {
+        return showWhoAreYouScreen(container, () => renderOutcomeFlow(container));
+      }
+    }
+    
+    // 2. Set Title
+    if(sectionTitle) sectionTitle.textContent = 'Log Appointment Outcome';
+    
+    // 3. Start Search
+    renderSearch(container);
+  };
+
+  // ─── SEARCH SCREEN ─────────────────────────────────────
+  function renderSearch(container) {
+    container.innerHTML = `
+      <div class="schedule-step">
+        <h2>Find Appointment</h2>
+        <div class="grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem;">
+            <div class="field"><label>Date</label><input id="oDate" type="text" placeholder="MM/DD/YYYY"></div>
+            <div class="field"><label>Client</label><input id="oClient" type="text"></div>
+            <div class="field"><label>Pet</label><input id="oPet" type="text"></div>
+        </div>
+        <div class="actions">
+            <button id="oSearchBtn" class="btn">Search</button>
+            <button id="oClearBtn" class="btn secondary">Clear</button>
+        </div>
+        <div id="oResults" style="margin-top:1rem;"></div>
+      </div>
+    `;
+
+    const results = container.querySelector('#oResults');
+
+    // Search Action
+    container.querySelector('#oSearchBtn').addEventListener('click', () => {
+      results.innerHTML = `<div class="spinner"></div>`;
+      google.script.run
+        .withSuccessHandler(res => {
+          if (!res || !res.ok) { 
+            results.innerHTML = `<p class="error">${res?.error || 'Error searching.'}</p>`; 
+            return; 
+          }
+          renderResults(container, results, res.rows || []);
+        })
+        .withFailureHandler(err => {
+          results.innerHTML = `<p class="error">Server error.</p>`;
+        })
+        // Pass TRUE as 2nd argument to include PAST appointments
+        .apiSearchAppointments({
+          date: container.querySelector('#oDate').value.trim(),
+          client: container.querySelector('#oClient').value.trim(),
+          pet: container.querySelector('#oPet').value.trim()
+        }, true); 
+    });
+    
+    // Clear Action
+    container.querySelector('#oClearBtn').addEventListener('click', () => {
+        container.querySelector('#oDate').value = '';
+        container.querySelector('#oClient').value = '';
+        container.querySelector('#oPet').value = '';
+        results.innerHTML = '';
+    });
+  }
+
+  // ─── RESULTS RENDERER ──────────────────────────────────
+  function renderResults(container, target, rows) {
+    target.innerHTML = '';
+    if(!rows.length) { 
+        target.innerHTML = `<p style="opacity:0.6; margin-top:1rem;">No appointments found.</p>`; 
+        return; 
+    }
+    
+    const grid = document.createElement('div');
+    grid.className = 'card-grid';
+    target.appendChild(grid);
+
+    rows.forEach(r => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <div style="font-weight:600; margin-bottom:0.25rem;">${r.firstName} ${r.lastName} — ${r.petName}</div>
+        <div>${r.date} ${r.time}</div>
+        <div>Status: <strong>${r.status}</strong></div>
+        <div style="font-size:0.8rem; opacity:0.6; margin-top:0.25rem;">${r.id}</div>
+      `;
+      card.style.cursor = 'pointer';
+      card.addEventListener('click', () => renderOutcomeForm(container, r));
+      grid.appendChild(card);
+    });
+  }
+
+  // ─── OUTCOME FORM (RICH TEXT) ──────────────────────────
+  function renderOutcomeForm(container, row) {
+    container.innerHTML = `
+      <div class="schedule-step">
+        <h2>Appointment Outcome</h2>
+        
+        <div style="background:#f8fafc; padding:1rem; border-radius:12px; border:1px solid #e2e8f0; margin-bottom:1.5rem;">
+           <strong>${row.firstName} ${row.lastName}</strong> with <strong>${row.petName}</strong><br>
+           ${row.date} at ${row.time}<br>
+           <span style="font-size:0.9rem; color:#64748b;">ID: ${row.id}</span>
+        </div>
+
+        <h3>Select Outcome</h3>
+        <div class="outcome-buttons" style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.5rem;">
+           <button class="btn outcome-opt" data-val="Completed" style="background:#fff; border:2px solid #ddd; color:#333; height:90px; font-size:1.1rem; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.5rem; transition:all 0.2s;">
+             <span style="font-size:2rem;">✅</span> Completed
+           </button>
+           <button class="btn outcome-opt" data-val="No Show" style="background:#fff; border:2px solid #ddd; color:#333; height:90px; font-size:1.1rem; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.5rem; transition:all 0.2s;">
+             <span style="font-size:2rem;">🚫</span> No Show
+           </button>
+        </div>
+
+        <div id="noteSection" class="hidden">
+           <label style="font-weight:600; display:block; margin-bottom:0.5rem;">Session Notes</label>
+           
+           <div class="toolbar" style="background:#f1f5f9; padding:0.5rem; border:1px solid #cbd5e1; border-bottom:none; border-radius:8px 8px 0 0; display:flex; gap:0.5rem;">
+             <button type="button" data-cmd="bold" style="font-weight:bold; min-width:30px;">B</button>
+             <button type="button" data-cmd="italic" style="font-style:italic; min-width:30px;">I</button>
+             <button type="button" data-cmd="underline" style="text-decoration:underline; min-width:30px;">U</button>
+             <div style="width:1px; background:#cbd5e1; margin:0 4px;"></div>
+             <button type="button" data-cmd="insertUnorderedList">• List</button>
+             <button type="button" data-cmd="insertOrderedList">1. List</button>
+           </div>
+           
+           <div id="richEditor" contenteditable="true" 
+                style="min-height:150px; background:#fff; border:1px solid #cbd5e1; border-radius:0 0 8px 8px; padding:1rem; overflow-y:auto; line-height:1.5;">
+           </div>
+           
+           <div class="actions" style="margin-top:1.5rem;">
+             <button id="saveOutcome" class="btn">Save Outcome</button>
+             <button id="cancelOutcome" class="btn secondary">Cancel</button>
+           </div>
+        </div>
+      </div>
+    `;
+
+    // ─── Interaction Logic ───
+    let selectedOutcome = '';
+    const buttons = container.querySelectorAll('.outcome-opt');
+    const noteSection = container.querySelector('#noteSection');
+    const editor = container.querySelector('#richEditor');
+
+    // 1. Outcome Selection
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        // Reset styles
+        buttons.forEach(b => {
+           b.style.borderColor = '#ddd'; 
+           b.style.background = '#fff';
+           b.style.color = '#333';
+           b.style.boxShadow = 'none';
+        });
+        // Highlight active
+        btn.style.borderColor = 'var(--accent)';
+        btn.style.background = '#f0f9ff';
+        btn.style.color = 'var(--accent)';
+        btn.style.boxShadow = '0 0 0 2px var(--accent)';
+        
+        selectedOutcome = btn.dataset.val;
+        noteSection.classList.remove('hidden');
+        
+        // Auto-focus editor if empty
+        if (!editor.innerText.trim()) {
+            setTimeout(() => editor.focus(), 100);
+        }
+      });
+    });
+
+    // 2. Toolbar Logic
+    container.querySelectorAll('.toolbar button').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault(); // Stop button from stealing focus
+        const cmd = btn.dataset.cmd;
+        document.execCommand(cmd, false, null);
+        editor.focus();
+      });
+    });
+
+    // 3. Save Action
+    container.querySelector('#saveOutcome').addEventListener('click', () => {
+      const saveBtn = container.querySelector('#saveOutcome');
+      saveBtn.classList.add('loading');
+      
+      // Capture Data
+      const textNote = editor.innerText.trim(); // Clean text for Sheet
+      const htmlNote = editor.innerHTML;        // Rich text for Drive File
+      const user = window.getSchedulerName ? window.getSchedulerName() : 'Staff';
+
+      google.script.run
+        .withSuccessHandler(res => {
+           if(!res || !res.ok) { 
+             alert('Error saving: ' + (res?.error || 'Unknown error')); 
+             saveBtn.classList.remove('loading'); 
+             return; 
+           }
+           
+           // Success Screen
+           container.innerHTML = `
+             <div style="text-align:center; padding:3rem;">
+               <div style="font-size:4rem; margin-bottom:1rem;">💾</div>
+               <h2>Outcome Saved!</h2>
+               <p style="color:#64748b; margin-top:0.5rem;">
+                 Status updated to <strong>${selectedOutcome}</strong>.<br>
+                 Notes archived to Drive securely.
+               </p>
+               <div class="actions" style="justify-content:center; margin-top:2rem;">
+                 <button class="btn" onclick="window.renderOutcomeFlow(document.querySelector('#view-outcome'))">Log Another</button>
+               </div>
+             </div>
+           `;
+        })
+        .withFailureHandler(err => {
+           alert('Server Error: ' + err);
+           saveBtn.classList.remove('loading');
+        })
+        .apiLogOutcome(row.id, selectedOutcome, textNote, htmlNote, user);
+    });
+
+    // 4. Cancel Action
+    container.querySelector('#cancelOutcome').addEventListener('click', () => {
+       renderOutcomeFlow(container);
+    });
+  }
+
+})();
+</script>

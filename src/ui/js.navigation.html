@@ -48,6 +48,9 @@ document.addEventListener('DOMContentLoaded', () => {
     else if (view === 'cancel' && typeof renderCancelFlow === 'function') {
        renderCancelFlow(target);
     }
+    else if (view === 'outcome' && typeof renderOutcomeFlow === 'function') {
+       renderOutcomeFlow(target);
+    }
   }
 
   // ─── Section title resolver ─────────────────────

@@ -7,6 +7,7 @@ const CFG = {
   SHEET_ID: '110OZsGAWmndDo07REdKQIrdR92XDBLwKgMvtfZ1oboU',
   GID: 0,
   SHEET_NAME: 'Appointments', // must match tab name exactly
+  OUTCOME_NOTES_FOLDER_ID: 1TVNU3-RENb4EhwteUVKyNi4g4Fd1YMMl
 
   // ─── Script Properties ─────────────────────────────
   EMAIL_PROPS: {
@@ -26,6 +27,9 @@ const CFG = {
     NEEDS_SCHED: 'Needs Scheduling',
     SCHEDULED_BY: 'Scheduled By',
     UPDATED_BY: 'Updated by',
+    APPT_OUTCOME: 'Appointment Outcome',
+    APPT_NOTES: 'Appointment Notes', // Plain text for quick reading
+    APPT_NOTES_FILE_ID: 'Outcome Notes File ID' // Link to the rich text
 
     // ─── Client Info ───────────────────────────
     FIRST: 'First Name',
