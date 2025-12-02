@@ -281,15 +281,9 @@ function apiUploadVetRecord(filename, base64Data, folderId) {
     return { ok: false, error: err.message };
   }
 }
-/**
- * Search existing appointments by exact (case-insensitive) match on query params.
- * FIXES: 
- * 1. Filters out past appointments.
- * 2. Properly handles Date objects to ensure future dates are editable.
- * 3. Formats dates as MM/dd/yyyy for the frontend.
- */
+
 /* ------------------------------------------
-   SEARCH UPDATED (Supports 'includePast' flag)
+   SEARCH UPDATED (Complex Filtering Logic)
    ------------------------------------------ */
 function apiSearchAppointments(query, includePast = false) {
   try {
@@ -303,9 +297,9 @@ function apiSearchAppointments(query, includePast = false) {
     const rawRows = searchAppointments_(date, client, pet);
 
     const rows = rawRows.reduce((acc, r) => {
+      // 1. Date Parsing
       let val = r[CFG.COLS.DATE];
       let rowDate = null;
-
       if (val instanceof Date) {
         rowDate = val;
       } else if (typeof val === 'string') {
@@ -317,27 +311,43 @@ function apiSearchAppointments(query, includePast = false) {
 
       const rowDateStr = Utilities.formatDate(rowDate, tz, 'yyyy-MM-dd');
       const rowDateMidnight = new Date(rowDateStr.replace(/-/g, '/'));
+      const status = String(r[CFG.COLS.STATUS] || '');
 
-      // FILTER LOGIC:
-      // If includePast is FALSE (Booking/Modify/Cancel), hide past dates.
-      // If includePast is TRUE (Outcome), show everything.
-      if (!includePast && rowDateMidnight.getTime() < today.getTime()) {
-        return acc;
+      // 2. OUTCOME FLOW FILTERING (when includePast is true)
+      if (includePast) {
+        // Logic:
+        // A. If searching ONLY by Date: Show "Available" and "Scheduled" (and "Reserved")
+        // B. If searching by Client/Pet: Show ONLY "Scheduled" (and "Reserved")
+        
+        const isDateOnly = (date && !client && !pet);
+        
+        if (isDateOnly) {
+           // Allow Available, Scheduled, Reserved
+           if (status !== 'Available' && status !== 'Scheduled' && status !== 'Reserved') return acc;
+        } else {
+           // Specific Search: Must be booked
+           if (status !== 'Scheduled' && status !== 'Reserved') return acc;
+        }
+      } 
+      // 3. STANDARD FLOW FILTERING (Booking/Modify)
+      else {
+        // Must be future
+        if (rowDateMidnight.getTime() < today.getTime()) return acc;
       }
 
-      // Editable logic remains same (only future is editable)
-      const isEditable = rowDateMidnight.getTime() > today.getTime();
+      // 4. Map Data
       const dateDisplay = Utilities.formatDate(rowDate, tz, 'MM/dd/yyyy');
 
       acc.push({
         id: String(r[CFG.COLS.ID] || ''),
         date: dateDisplay, 
         time: `${r[CFG.COLS.TIME] || ''} ${r[CFG.COLS.AMPM] || ''}`.trim(),
-        status: String(r[CFG.COLS.STATUS] || ''),
+        status: status,
         firstName: String(r[CFG.COLS.FIRST] || ''),
         lastName: String(r[CFG.COLS.LAST] || ''),
         petName: String(r[CFG.COLS.PET_NAME] || ''),
-        // ... (Include other fields if needed for display) ...
+        // NEW: Return original notes so we can display them in Outcome flow
+        notes: String(r['Notes'] || '') 
       });
       
       return acc;
@@ -351,10 +361,7 @@ function apiSearchAppointments(query, includePast = false) {
 }
 
 /* ------------------------------------------
-   LOG OUTCOME
-   ------------------------------------------ */
-/* ------------------------------------------
-   LOG OUTCOME (Updated for Drive Storage)
+   LOG OUTCOME (Updated for "Block Off")
    ------------------------------------------ */
 function apiLogOutcome(appointmentId, outcome, textNote, htmlNote, user) {
   try {
@@ -365,27 +372,41 @@ function apiLogOutcome(appointmentId, outcome, textNote, htmlNote, user) {
     const idx = all.findIndex(r => String(r[CFG.COLS.ID] || '').trim() === String(appointmentId).trim());
     if (idx < 0) throw new Error('Appointment not found');
 
-    // 2. Save Rich Text to Drive
+    // 2. Logic Split
     let fileId = '';
-    if (htmlNote && htmlNote.trim().length > 0) {
-      const folder = DriveApp.getFolderById(CFG.OUTCOME_NOTES_FOLDER_ID);
-      const fileName = `Note_${appointmentId}_${outcome}.html`;
-      
-      // Create HTML file
-      const file = folder.createFile(fileName, htmlNote, MimeType.HTML);
-      fileId = file.getId();
+    let newStatus = outcome;
+    let needsSched = 'No';
+
+    // BLOCK OFF LOGIC
+    if (outcome === 'DO NOT USE') {
+       // Do not create drive file
+       // Update text note only
+    } 
+    // STANDARD OUTCOME LOGIC
+    else {
+       // Create Drive File if HTML exists
+       if (htmlNote && htmlNote.trim().length > 0) {
+         const folder = DriveApp.getFolderById(CFG.OUTCOME_NOTES_FOLDER_ID);
+         const fileName = `Note_${appointmentId}_${outcome}.html`;
+         const file = folder.createFile(fileName, htmlNote, MimeType.HTML);
+         fileId = file.getId();
+       }
     }
 
     // 3. Build Payload
     const payload = {
-      [CFG.COLS.APPT_OUTCOME]: outcome,
-      [CFG.COLS.APPT_NOTES]: textNote,      // Plain text for human readability in sheet
-      [CFG.COLS.APPT_NOTES_FILE_ID]: fileId,// Reference to the fancy version
-      [CFG.COLS.STATUS]: outcome,
-      [CFG.COLS.NEEDS_SCHED]: 'No',
+      [CFG.COLS.APPT_OUTCOME]: (outcome === 'DO NOT USE' ? '' : outcome), // Don't log "DO NOT USE" as a clinical outcome
+      [CFG.COLS.APPT_NOTES]: textNote,
+      [CFG.COLS.APPT_NOTES_FILE_ID]: fileId,
+      [CFG.COLS.STATUS]: newStatus,
+      [CFG.COLS.NEEDS_SCHED]: needsSched, // Sets to "No" (or "DO NOT USE" if we mapped it, but "No" removes it from queues)
       [CFG.COLS.UPDATED_BY]: user,
       [CFG.COLS.UPDATED_AT]: new Date()
     };
+    
+    if (outcome === 'DO NOT USE') {
+       payload[CFG.COLS.NEEDS_SCHED] = 'DO NOT USE'; // Specific requirement
+    }
 
     // 4. Update Sheet
     updateAppointmentRow_(idx + 2, payload);
