@@ -136,37 +136,65 @@ function getAvailableSlots_(type, limit) {
   return normalized.slice(0, limit);
 }
 
-/**
  * Updates a specific appointment row by index with new data.
- * Handles aliases (Phone vs Phone Number) and Case-Insensitivity.
+ * FIXES: Uses "Header-Centric" matching to catch 'Records', 'Phone', and 'Zip' reliably.
  */
 function updateAppointmentRow_(rowIndex, data) {
   const sh = getSheet_();
-  const { headers } = getHeaderMap_(sh);
+  const { headers } = getHeaderMap_(sh); // headers is array of actual sheet strings
   const lastCol = headers.length;
 
+  // Read the current row so we don't overwrite columns we aren't touching
   const existingRow = sh.getRange(rowIndex, 1, 1, lastCol).getValues()[0];
   const updatedRow = existingRow.slice();
 
   // 1. Create a Normalized Data Map
+  // Stores { 'phone': '555-5555', 'previous vet records': 'No' }
   const dataMap = {};
   Object.keys(data || {}).forEach(k => {
-    const val = data[k];
-    const kLow = k.toLowerCase().trim();
-    dataMap[kLow] = val; 
-    
-    // Explicit Aliases
-    if (kLow === 'phone') dataMap['phone number'] = val;
-    if (kLow === 'zip') dataMap['zip code'] = val;
-    if (kLow === 'address') dataMap['street address'] = val;
-    if (kLow.includes('record')) dataMap['previous vet records'] = val;
+    if (data[k] !== undefined) {
+      dataMap[k.toLowerCase().trim()] = data[k];
+    }
   });
 
-  // 2. Loop Headers
+  // 2. Loop Headers and find matching data
   headers.forEach((h, i) => {
     const hLow = String(h).toLowerCase().trim();
+    
+    // --- Strategy A: Exact Match ---
     if (dataMap.hasOwnProperty(hLow)) {
       updatedRow[i] = dataMap[hLow];
+      return; // Done with this column
+    }
+
+    // --- Strategy B: Smart Aliases (Fuzzy Matching) ---
+    
+    // Phone: If header has "phone" (e.g. "Phone Number"), look for "phone" key
+    if (hLow.includes('phone') && dataMap.hasOwnProperty('phone')) {
+      updatedRow[i] = dataMap['phone'];
+      return;
+    }
+    
+    // Zip: If header has "zip" (e.g. "Zip Code"), look for "zip" key
+    if (hLow.includes('zip') && dataMap.hasOwnProperty('zip')) {
+      updatedRow[i] = dataMap['zip'];
+      return;
+    }
+    
+    // Address: If header has "address" (e.g. "Street Address"), look for "address" key
+    if (hLow.includes('address') && dataMap.hasOwnProperty('address')) {
+      updatedRow[i] = dataMap['address'];
+      return;
+    }
+
+    // Records: If header mentions "record" or "vet", look for any data key containing "record"
+    // This catches "Previous Vet Records", "Prev Records", "Vet Records", etc.
+    if (hLow.includes('record') || hLow.includes('vet')) {
+      const fuzzyKey = Object.keys(dataMap).find(k => k.includes('record'));
+      if (fuzzyKey) {
+        updatedRow[i] = dataMap[fuzzyKey];
+        return;
+      }
     }
   });
 
