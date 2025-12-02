@@ -4,18 +4,12 @@
 
   // ─── PUBLIC ENTRY POINT ────────────────────────────────
   window.renderOutcomeFlow = function(container) {
-    // 1. Identity Check
-    // If no scheduler name is set, force the "Who are you?" screen first
-    if (typeof getSchedulerName === 'function' && !getSchedulerName()) {
-      if (typeof showWhoAreYouScreen === 'function') {
-        return showWhoAreYouScreen(container, () => renderOutcomeFlow(container));
-      }
-    }
+    // REMOVED: Identity Check block
     
-    // 2. Set Title
+    // 1. Set Title
     if(sectionTitle) sectionTitle.textContent = 'Log Appointment Outcome';
     
-    // 3. Start Search
+    // 2. Start Search
     renderSearch(container);
   };
 
@@ -193,7 +187,7 @@
       // Capture Data
       const textNote = editor.innerText.trim(); // Clean text for Sheet
       const htmlNote = editor.innerHTML;        // Rich text for Drive File
-      const user = window.getSchedulerName ? window.getSchedulerName() : 'Staff';
+      const user = (typeof window.getSchedulerName === 'function') ? window.getSchedulerName() : '';
 
       google.script.run
         .withSuccessHandler(res => {
@@ -222,7 +216,7 @@
            alert('Server Error: ' + err);
            saveBtn.classList.remove('loading');
         })
-        .apiLogOutcome(row.id, selectedOutcome, textNote, htmlNote, user);
+        .apiLogOutcome(row.id, selectedOutcome, textNote, htmlNote, user || 'Staff');
     });
 
     // 4. Cancel Action
