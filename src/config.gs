@@ -7,7 +7,7 @@ const CFG = {
   SHEET_ID: '110OZsGAWmndDo07REdKQIrdR92XDBLwKgMvtfZ1oboU',
   GID: 0,
   SHEET_NAME: 'Appointments', // must match tab name exactly
-  OUTCOME_NOTES_FOLDER_ID: '1TVNU3-RENb4EhwteUVKyNi4g4Fd1YMMl'
+  OUTCOME_NOTES_FOLDER_ID: '1TVNU3-RENb4EhwteUVKyNi4g4Fd1YMMl',
 
   // ─── Script Properties ─────────────────────────────
   EMAIL_PROPS: {
