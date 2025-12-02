@@ -29,7 +29,7 @@ const CFG = {
     UPDATED_BY: 'Updated by',
     APPT_OUTCOME: 'Appointment Outcome',
     APPT_NOTES: 'Appointment Notes', // Plain text for quick reading
-    APPT_NOTES_FILE_ID: 'Outcome Notes File ID' // Link to the rich text
+    APPT_NOTES_FILE_ID: 'Outcome Notes File ID', // Link to the rich text
 
     // ─── Client Info ───────────────────────────
     FIRST: 'First Name',
