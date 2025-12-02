@@ -136,9 +136,6 @@ function getAvailableSlots_(type, limit) {
   return normalized.slice(0, limit);
 }
 
- * Updates a specific appointment row by index with new data.
- * FIXES: Uses "Header-Centric" matching to catch 'Records', 'Phone', and 'Zip' reliably.
- */
 function updateAppointmentRow_(rowIndex, data) {
   const sh = getSheet_();
   const { headers } = getHeaderMap_(sh); // headers is array of actual sheet strings
