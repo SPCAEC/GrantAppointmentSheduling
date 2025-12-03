@@ -14,7 +14,21 @@
       <div class="schedule-step">
         <h2>Find Appointment</h2>
         <div class="grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem;">
-            <div class="field"><label>Date</label><input id="oDate" type="text" placeholder="MM/DD/YYYY"></div>
+            
+            <div class="field">
+              <label>Date</label>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <input id="oDate" type="text" placeholder="MM/DD/YYYY" maxlength="10">
+                <div style="position:relative; width:32px; height:32px; flex-shrink:0;">
+                   <input id="oDatePicker" type="date" 
+                          style="position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; z-index:2;">
+                   <button class="btn secondary" style="width:100%; height:100%; padding:0; display:flex; align-items:center; justify-content:center;">
+                     📅
+                   </button>
+                </div>
+              </div>
+            </div>
+
             <div class="field"><label>Client</label><input id="oClient" type="text"></div>
             <div class="field"><label>Pet</label><input id="oPet" type="text"></div>
         </div>
@@ -27,8 +41,56 @@
     `;
 
     const results = container.querySelector('#oResults');
+    const dateInput = container.querySelector('#oDate');
+    const datePicker = container.querySelector('#oDatePicker');
 
+    // ─── 1. Date Logic (Auto-Format & Picker) ───
+    
+    // A. Sync Picker -> Text
+    datePicker.addEventListener('change', () => {
+      if (datePicker.value) {
+        // Picker returns YYYY-MM-DD, we need MM/DD/YYYY
+        const [y, m, d] = datePicker.value.split('-');
+        dateInput.value = `${m}/${d}/${y}`;
+      }
+    });
+
+    // B. Typing Logic (12082025 -> 12/08/2025)
+    dateInput.addEventListener('input', (e) => {
+      let v = e.target.value.replace(/\D/g, ''); // strip non-digits
+      if (v.length >= 5) v = `${v.slice(0,2)}/${v.slice(2,4)}/${v.slice(4,8)}`;
+      else if (v.length >= 3) v = `${v.slice(0,2)}/${v.slice(2)}`;
+      e.target.value = v;
+    });
+
+    // C. Pad Logic on Blur (1/1/25 -> 01/01/2025)
+    const normalizeDate = () => {
+      const raw = dateInput.value.trim();
+      if (!raw) return;
+      const parts = raw.split('/');
+      if (parts.length === 3) {
+        let m = parts[0];
+        let d = parts[1];
+        let y = parts[2];
+        
+        // Pad Single Digits
+        if (m.length === 1) m = '0' + m;
+        if (d.length === 1) d = '0' + d;
+        
+        // Handle Short Year (25 -> 2025)
+        if (y.length === 2) y = '20' + y;
+        
+        dateInput.value = `${m}/${d}/${y}`;
+      }
+    };
+    dateInput.addEventListener('change', normalizeDate);
+    dateInput.addEventListener('blur', normalizeDate);
+
+
+    // ─── 2. Search Action ───
     container.querySelector('#oSearchBtn').addEventListener('click', () => {
+      normalizeDate(); // Ensure format is perfect before sending
+      
       results.innerHTML = `<div class="spinner"></div>`;
       google.script.run
         .withSuccessHandler(res => {
@@ -38,21 +100,27 @@
           }
           renderResults(container, results, res.rows || []);
         })
+        .withFailureHandler(err => {
+          results.innerHTML = `<p class="error">Server error.</p>`;
+        })
         .apiSearchAppointments({
-          date: container.querySelector('#oDate').value.trim(),
+          date: dateInput.value.trim(),
           client: container.querySelector('#oClient').value.trim(),
           pet: container.querySelector('#oPet').value.trim()
         }, true); 
     });
     
+    // Clear Action
     container.querySelector('#oClearBtn').addEventListener('click', () => {
-        container.querySelector('#oDate').value = '';
+        dateInput.value = '';
+        datePicker.value = '';
         container.querySelector('#oClient').value = '';
         container.querySelector('#oPet').value = '';
         results.innerHTML = '';
     });
   }
 
+  // ─── RESULTS RENDERER ──────────────────────────────────
   function renderResults(container, target, rows) {
     target.innerHTML = '';
     if(!rows.length) { 
@@ -68,8 +136,6 @@
       const card = document.createElement('div');
       card.className = 'card';
       const isAvailable = (r.status === 'Available');
-      
-      // Visual cue for Available slots
       const statusStyle = isAvailable 
         ? 'color:var(--success); background:#dcfce7; padding:2px 6px; border-radius:4px;' 
         : 'color:var(--fg);';
@@ -92,22 +158,17 @@
   // ─── OUTCOME FORM ──────────────────────────────────────
   function renderOutcomeForm(container, row) {
     const isAvailable = (row.status === 'Available');
-    const displayTitle = isAvailable 
-        ? `Block Off Slot` 
-        : `Appointment Outcome`;
+    const displayTitle = isAvailable ? `Block Off Slot` : `Appointment Outcome`;
 
-    // 1. Define Buttons based on Status
+    // Button Logic
     let buttonsHtml = '';
-    
     if (isAvailable) {
-        // CASE A: Available -> "Block Off"
         buttonsHtml = `
            <button class="btn outcome-opt" data-val="DO NOT USE" style="background:#fff; border:2px solid #dc2626; color:#dc2626; height:90px; font-size:1.1rem; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.5rem; transition:all 0.2s;">
              <span style="font-size:2rem;">🛑</span> Block Off
            </button>
         `;
     } else {
-        // CASE B: Scheduled -> "Completed" or "No Show"
         buttonsHtml = `
            <button class="btn outcome-opt" data-val="Completed" style="background:#fff; border:2px solid #ddd; color:#333; height:90px; font-size:1.1rem; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.5rem; transition:all 0.2s;">
              <span style="font-size:2rem;">✅</span> Completed
@@ -166,7 +227,6 @@
       </div>
     `;
 
-    // ─── Interaction Logic ───
     let selectedOutcome = '';
     let isNoteRequired = false;
     
@@ -176,23 +236,18 @@
     const editor = container.querySelector('#richEditor');
     const noteLabel = container.querySelector('#noteLabel');
 
-    // 1. Outcome Selection
     buttons.forEach(btn => {
       btn.addEventListener('click', () => {
-        // Reset styles
         buttons.forEach(b => {
            b.style.borderColor = '#ddd'; 
            b.style.background = '#fff';
            b.style.color = '#333';
-           if(b.dataset.val === 'DO NOT USE') b.style.color = '#dc2626'; // Keep Red for block
+           if(b.dataset.val === 'DO NOT USE') b.style.color = '#dc2626';
            b.style.boxShadow = 'none';
         });
         
-        // Highlight active
         btn.style.background = '#f0f9ff';
         btn.style.boxShadow = '0 0 0 2px var(--accent)';
-        
-        // Specific highlight colors
         if(btn.dataset.val === 'DO NOT USE') {
             btn.style.background = '#fef2f2';
             btn.style.boxShadow = '0 0 0 2px #dc2626';
@@ -201,7 +256,6 @@
         selectedOutcome = btn.dataset.val;
         noteSection.classList.remove('hidden');
         
-        // Handle "Completed" Logic (Show Original Notes + Required)
         if (selectedOutcome === 'Completed') {
             origPanel.classList.remove('hidden');
             noteLabel.innerHTML = `Summary Note <span style="color:red">*</span>`;
@@ -212,14 +266,10 @@
             isNoteRequired = false;
         }
 
-        // Auto-focus
-        if (!editor.innerText.trim()) {
-            setTimeout(() => editor.focus(), 100);
-        }
+        if (!editor.innerText.trim()) setTimeout(() => editor.focus(), 100);
       });
     });
 
-    // 2. Toolbar Logic
     container.querySelectorAll('.toolbar button').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.preventDefault();
@@ -228,13 +278,11 @@
       });
     });
 
-    // 3. Save Action
     container.querySelector('#saveOutcome').addEventListener('click', () => {
       const textNote = editor.innerText.trim();
       const htmlNote = editor.innerHTML;
       const user = (typeof window.getSchedulerName === 'function') ? window.getSchedulerName() : 'Staff';
       
-      // Validation
       if (isNoteRequired && textNote.length < 5) {
           alert("Please provide a summary note addressing the original concerns.");
           editor.focus();
@@ -251,11 +299,7 @@
              saveBtn.classList.remove('loading'); 
              return; 
            }
-           
-           let msg = (selectedOutcome === 'DO NOT USE') 
-             ? `Slot has been blocked off.`
-             : `Outcome saved as <strong>${selectedOutcome}</strong>.`;
-
+           let msg = (selectedOutcome === 'DO NOT USE') ? `Slot has been blocked off.` : `Outcome saved as <strong>${selectedOutcome}</strong>.`;
            container.innerHTML = `
              <div style="text-align:center; padding:3rem;">
                <div style="font-size:4rem; margin-bottom:1rem;">💾</div>
@@ -274,7 +318,6 @@
         .apiLogOutcome(row.id, selectedOutcome, textNote, htmlNote, user);
     });
 
-    // 4. Cancel Action
     container.querySelector('#cancelOutcome').addEventListener('click', () => {
        renderOutcomeFlow(container);
     });
