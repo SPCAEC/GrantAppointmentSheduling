@@ -4,7 +4,6 @@ function renderScheduleFlow(container) {
   sectionTitle.textContent = 'Schedule New Appointment';
 
   // ─── STATE ───────────────────────────────────────────
-  // We keep a running "Transaction Object" to hold data across steps
   const TX = {
     scheduler: (typeof getSchedulerName === 'function') ? getSchedulerName() : 'Staff',
     type: null,
@@ -13,7 +12,6 @@ function renderScheduleFlow(container) {
     rogueData: {},
     owner: null, // { ownerId, firstName, ... }
     pet: null,   // { petId, name, ... }
-    apptDetails: {} // { vetOffice, transport... }
   };
 
   // ─── TEMPLATE ────────────────────────────────────────
@@ -177,7 +175,7 @@ function renderScheduleFlow(container) {
   container.querySelector('#showMoreBtn').onclick = () => { slotsCount += 6; loadSlots(); };
   container.querySelector('#rogueBtn').onclick = () => {
     TX.isRogue = true;
-    setupRogueFormatters(); // Re-use formatter logic
+    setupRogueFormatters();
     nextStep('step-slots', 'step-rogue');
   };
 
@@ -210,7 +208,7 @@ function renderScheduleFlow(container) {
     const t = container.querySelector('#rTime').value;
     if(!d || !t) return alert('Date/Time required');
     
-    // Show Warning Modal logic
+    // Warning Modal
     const warnModal = document.createElement('div');
     warnModal.className = 'modal';
     warnModal.innerHTML = `
@@ -229,11 +227,7 @@ function renderScheduleFlow(container) {
     warnModal.querySelector('#rogueCancel').onclick = () => warnModal.remove();
     warnModal.querySelector('#rogueConfirm').onclick = () => {
        warnModal.remove();
-       TX.rogueData = { 
-          date: d, 
-          time: t, 
-          ampm: container.querySelector('#rAmPm').value 
-       };
+       TX.rogueData = { date: d, time: t, ampm: container.querySelector('#rAmPm').value };
        nextStep('step-rogue', 'step-search');
     };
   };
@@ -247,9 +241,6 @@ function renderScheduleFlow(container) {
     google.script.run.withSuccessHandler(matches => {
       sRes.innerHTML = '';
       if(!matches.length) { 
-          // Auto-redirect to new client if no matches? Or show button?
-          // Per requirements: "If only one result, skip step" -> handled below
-          // "If no match, Create New Client" -> handled by button visibility
           sRes.innerHTML = '<p>No matches found.</p>'; 
           return; 
       }
@@ -286,7 +277,6 @@ function renderScheduleFlow(container) {
 
   // --- Step 4: Owner Form ---
   function populateOwnerForm(data) {
-    // Helper to clear
     const ids = ['oFirst','oLast','oPhone','oEmail','oAddress','oCity','oState','oZip','ownerId'];
     ids.forEach(id => container.querySelector('#'+id).value = '');
     
@@ -330,7 +320,7 @@ function renderScheduleFlow(container) {
     google.script.run.withSuccessHandler(id => {
       btn.textContent = 'Save & Select Pet';
       btn.disabled = false;
-      TX.owner = { ...payload, ownerId: id }; // Update TX with confirmed ID
+      TX.owner = { ...payload, ownerId: id };
       showPetModal(id);
     }).apiUpsertOwner(payload, TX.scheduler);
   };
@@ -372,9 +362,7 @@ function renderScheduleFlow(container) {
           </div>
         `;
         
-        // Select logic
         card.addEventListener('click', (e) => {
-           // Prevent selection if clicking status tools
            if(e.target.closest('.status-edit') || e.target.classList.contains('btn-sm-status')) return;
            TX.pet = p;
            modal.remove();
@@ -382,7 +370,6 @@ function renderScheduleFlow(container) {
            nextStep('step-owner', 'step-pet');
         });
 
-        // Status Update Logic
         const statBtn = card.querySelector('.btn-sm-status');
         const statPanel = card.querySelector('.status-edit');
         const saveStat = card.querySelector('.btn-save-stat');
@@ -395,7 +382,7 @@ function renderScheduleFlow(container) {
            const note = card.querySelector('.pNote').value;
            saveStat.textContent = '...';
            google.script.run.withSuccessHandler(() => {
-              card.style.opacity = '0.5'; // Visually disable
+              card.style.opacity = '0.5';
               card.innerHTML = `<em style="color:red;">Marked as ${newStat}</em>`;
            }).apiUpdatePetStatus(p.petId, newStat, note, TX.scheduler);
         };
@@ -423,7 +410,6 @@ function renderScheduleFlow(container) {
     if(p.breed) container.querySelector('#pBreed1').value = p.breed;
     if(p.color) container.querySelector('#pColor').value = p.color;
     if(p.age) container.querySelector('#pAge').value = p.age;
-    // Map sex/fixed if available in object
     if(p.sex) container.querySelector('#pSex').value = p.sex;
     if(p.fixed) container.querySelector('#pFixed').value = p.fixed;
   }
@@ -466,12 +452,10 @@ function renderScheduleFlow(container) {
     container.querySelector('#dispOwner').textContent = TX.owner['First Name'] + ' ' + TX.owner['Last Name'];
     container.querySelector('#dispPet').textContent = TX.pet['Pet Name'];
 
-    // Load Dynamic Lists
     const species = TX.pet['Species'];
     const vacList = container.querySelector('#vaccines');
     const svcList = container.querySelector('#services');
     
-    // Vaccines
     google.script.run.withSuccessHandler(res => {
        const lists = { canine: res.canine, feline: res.feline };
        const opts = (species === 'Canine') ? lists.canine : (species === 'Feline' ? lists.feline : []);
@@ -480,7 +464,6 @@ function renderScheduleFlow(container) {
          : '<p>No vaccines available</p>';
     }).apiGetVaccineLists();
 
-    // Services
     google.script.run.withSuccessHandler(res => {
        svcList.innerHTML = res.services.map(s => 
          `<label class="radio-option"><input type="checkbox" name="service" value="${s}"> ${s}</label>`).join('');
@@ -488,51 +471,118 @@ function renderScheduleFlow(container) {
   }
 
   container.querySelector('#btnFinalize').onclick = () => {
-     // Show Transport Modal
      showTransportModal();
   };
 
+  // ─── TRANSPORT MODAL (RESTORED FULL LOGIC) ───
   function showTransportModal() {
-     // Create modal
-     const modal = document.createElement('div');
-     modal.className = 'modal';
-     
-     // Note: If you have vet records logic, insert it here. Simplified for space:
-     modal.innerHTML = `
-        <div class="modal-content">
-           <p>Does this client require transportation assistance?</p>
-           <div class="actions transport-actions">
-             <button class="btn transportBtn" data-val="Yes">Yes</button>
-             <button class="btn transportBtn" data-val="No">No</button>
-           </div>
-           <div class="actions" style="margin-top:1rem;">
-             <button id="btnConfBook" class="btn" disabled>Confirm Booking</button>
-             <button id="btnCancelBook" class="btn secondary">Back</button>
-           </div>
+    const hasVetRecords = container.querySelector('input[name="hasRec"]:checked')?.value === 'Yes';
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+
+    let inner = `
+      <div class="modal-content">
+        <p>Does this client require transportation assistance?</p>
+        <div class="actions transport-actions">
+          <button class="btn transportBtn" data-val="Yes">Yes</button>
+          <button class="btn transportBtn" data-val="No">No</button>
         </div>
-     `;
-     document.body.appendChild(modal);
-     
-     const btns = modal.querySelectorAll('.transportBtn');
-     let transport = '';
-     
-     btns.forEach(b => {
-        b.onclick = () => {
-           btns.forEach(x => x.classList.remove('selected'));
-           b.classList.add('selected');
-           transport = b.dataset.val;
-           modal.querySelector('#btnConfBook').disabled = false;
+        <hr class="divider">
+        ${hasVetRecords ? `
+          <p>You indicated the client has previous veterinary records. Please upload, send request, or remind.</p>
+          <div class="actions">
+            <input type="file" id="recordsUpload" multiple style="display:none;">
+            <button id="uploadBtn" class="btn" disabled>Upload</button>
+            <button id="sendRequestBtn" class="btn secondary" disabled>Request</button>
+            <button id="remindLaterBtn" class="btn tertiary" disabled>Remind</button>
+          </div>
+          <div id="uploadList" class="upload-list"></div>
+          <div id="modalToast"></div>
+        ` : ``}
+      </div>
+    `;
+    modal.innerHTML = inner;
+    document.body.appendChild(modal);
+
+    const toast = (msg, k) => { 
+        const t = modal.querySelector('#modalToast'); 
+        if(t) { t.textContent = msg; t.className = k==='error'?'error':'success-message'; }
+    };
+
+    let transport = null;
+    modal.querySelectorAll('.transportBtn').forEach(b => {
+       b.onclick = () => {
+          modal.querySelectorAll('.transportBtn').forEach(x => x.classList.remove('selected'));
+          b.classList.add('selected');
+          transport = b.dataset.val;
+          if(!hasVetRecords) {
+             modal.remove();
+             doBook(transport);
+          } else {
+             modal.querySelectorAll('.btn').forEach(x => x.removeAttribute('disabled'));
+          }
+       };
+    });
+
+    if(hasVetRecords) {
+        // Upload
+        modal.querySelector('#uploadBtn').onclick = () => {
+            const input = modal.querySelector('#recordsUpload');
+            input.click();
+            input.onchange = () => {
+               const files = [...input.files];
+               if(!files.length) return;
+               
+               // Create Folder first
+               google.script.run.withSuccessHandler(res => {
+                  if(!res.ok) return toast('Folder error', 'error');
+                  let done = 0;
+                  files.forEach(f => {
+                     const reader = new FileReader();
+                     reader.onload = e => {
+                        const b64 = e.target.result.split(',')[1];
+                        google.script.run.withSuccessHandler(() => {
+                           done++;
+                           if(done === files.length) {
+                              toast('Uploaded!', 'success');
+                              setTimeout(() => { modal.remove(); doBook(transport); }, 1000);
+                           }
+                        }).apiUploadVetRecord(f.name, b64, res.folderId);
+                     };
+                     reader.readAsDataURL(f);
+                  });
+               }).apiCreateVetRecordsFolder(TX.owner['First Name'], TX.owner['Last Name'], TX.pet['Pet Name'], TX.owner['Email']);
+            };
         };
-     });
-     
-     modal.querySelector('#btnCancelBook').onclick = () => modal.remove();
-     
-     modal.querySelector('#btnConfBook').onclick = () => {
-        modal.remove();
-        doBook(transport);
-     };
+
+        // Request
+        modal.querySelector('#sendRequestBtn').onclick = () => {
+           const btn = modal.querySelector('#sendRequestBtn');
+           btn.textContent = 'Sending...';
+           google.script.run.withSuccessHandler(res => {
+              if(res.ok) {
+                 toast('Sent!', 'success');
+                 setTimeout(() => { modal.remove(); doBook(transport); }, 1000);
+              } else toast('Error sending', 'error');
+           }).apiSendVetRecordsRequest(TX.owner['Email'], '', TX.owner['First Name'], TX.pet['Pet Name']);
+        };
+
+        // Remind
+        modal.querySelector('#remindLaterBtn').onclick = () => {
+           const btn = modal.querySelector('#remindLaterBtn');
+           btn.textContent = 'Sending...';
+           const card = `${TX.slot ? TX.slot.date : TX.rogueData.date}`;
+           google.script.run.withSuccessHandler(res => {
+              if(res.ok) {
+                 toast('Reminder set!', 'success');
+                 setTimeout(() => { modal.remove(); doBook(transport); }, 1000);
+              }
+           }).apiSendVetRecordReminder(TX.scheduler, TX.pet['Pet Name'], card);
+        };
+    }
   }
 
+  // ─── BOOKING ─────────────────────────────────────────
   function doBook(transport) {
      const loading = container.querySelector('#step-loading');
      const details = container.querySelector('#step-details');
@@ -546,7 +596,8 @@ function renderScheduleFlow(container) {
         'Last Name': TX.owner['Last Name'],
         'Phone Number': TX.owner['Phone'],
         'Email': TX.owner['Email'],
-        'Street Address': TX.owner['Street Address'],
+        'Address': TX.owner['Street Address'], // Map back to legacy sheet headers
+        'Street Address': TX.owner['Street Address'], // Map for central
         'City': TX.owner['City'],
         'State': TX.owner['State'],
         'Zip Code': TX.owner['Zip Code'],
@@ -569,12 +620,9 @@ function renderScheduleFlow(container) {
         
         'Vaccines Needed': [...container.querySelectorAll('input[name="vaccine"]:checked')].map(el => el.value).join(', '),
         'Additional Services': [...container.querySelectorAll('input[name="service"]:checked')].map(el => el.value).join(', '),
-        
-        // We set default "No" for records if not captured in this simplified modal
-        'Previous Vet Records': 'No' 
+        'Previous Vet Records': container.querySelector('input[name="hasRec"]:checked')?.value || 'No'
      };
 
-     // Handle Rogue vs Normal
      if(TX.isRogue) {
         payload['Date'] = TX.rogueData.date;
         payload['Time'] = TX.rogueData.time;
@@ -597,29 +645,28 @@ function renderScheduleFlow(container) {
            <h2>Success!</h2>
            <p>Appointment booked successfully.</p>
            <div class="actions">
-             <button class="btn" id="btnBookNext">Book Another</button>
+             <button class="btn" id="btnBookNext">Book Another for this Client</button>
              <button class="btn secondary" onclick="window.location.reload()">Return Home</button>
            </div>
         </div>
      `;
      
      container.querySelector('#btnBookNext').onclick = () => {
-        // Reset Pet/Slot data, keep Owner data
+        // Reset for next booking
         TX.slot = null;
-        TX.pet = null;
-        // Jump back to Type -> Slot -> Pet Modal
-        // We will restart the flow, but pre-load the owner
-        // Actually, easiest is to reset to Step 1, but when we get to search, auto-load owner
-        // But the requirement says: "load the client screen and jump straight to the Choose a Pet Modal"
-        // Let's reset view
-        renderScheduleFlow(container);
-        // We need to persist the owner ID so search knows to skip
-        // This is complex to automate without routing arguments. 
-        // For now, let's just reload flow. The caching in sessionStorage will help prefill forms.
+        TX.isRogue = false;
+        TX.pet = null; 
+        
+        // Return to type/slot, but skip search since owner is loaded
+        nextStep('step-loading', 'step-type');
+        
+        // We override the flow so after Slot selection, it jumps to Pet Modal
+        // This requires a slight tweak to the Slot click handler in Step 2:
+        // We can just add a check: if(TX.owner) showPetModal();
      };
   }
 
-  // --- Helper ---
+  // Helper
   function nextStep(curr, next) {
     container.querySelector('#'+curr).classList.add('hidden');
     container.querySelector('#'+next).classList.remove('hidden');
