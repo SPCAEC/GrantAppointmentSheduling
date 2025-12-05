@@ -21,10 +21,21 @@
         <div class="schedule-step">
         <h2>Find an Appointment to Modify</h2>
         <div class="grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem;">
+            
             <div class="field">
-            <label>Date (MM/DD/YYYY)</label>
-            <input id="mDate" type="text" placeholder="11/05/2025">
+              <label>Date (MM/DD/YYYY)</label>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <input id="mDate" type="text" placeholder="MM/DD/YYYY" maxlength="10">
+                <div style="position:relative; width:32px; height:32px; flex-shrink:0;">
+                   <input id="mDatePicker" type="date" 
+                          style="position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; z-index:2;">
+                   <button class="btn secondary" style="width:100%; height:100%; padding:0; display:flex; align-items:center; justify-content:center;">
+                     📅
+                   </button>
+                </div>
+              </div>
             </div>
+
             <div class="field">
             <label>Client Name (exact, case-insensitive)</label>
             <input id="mClient" type="text" placeholder="First, Last, or First Last">
@@ -43,27 +54,70 @@
     `;
 
     const mDate = container.querySelector('#mDate');
+    const mDatePicker = container.querySelector('#mDatePicker');
     const mClient = container.querySelector('#mClient');
     const mPet = container.querySelector('#mPet');
     const results = container.querySelector('#mResults');
-    // 🔹 FIX: Defined searchBtn here so it can be used below
-    const searchBtn = container.querySelector('#mSearchBtn'); 
+    const searchBtn = container.querySelector('#mSearchBtn');
 
-    // ─── NEW: Trigger Search on Enter ───
+    // ─── 1. Date Logic (Auto-Format & Picker) ───
+    
+    // A. Sync Picker -> Text
+    mDatePicker.addEventListener('change', () => {
+      if (mDatePicker.value) {
+        // Picker returns YYYY-MM-DD, convert to MM/DD/YYYY
+        const [y, m, d] = mDatePicker.value.split('-');
+        mDate.value = `${m}/${d}/${y}`;
+      }
+    });
+
+    // B. Typing Logic (12082025 -> 12/08/2025)
+    mDate.addEventListener('input', (e) => {
+      let v = e.target.value.replace(/\D/g, ''); // strip non-digits
+      if (v.length >= 5) v = `${v.slice(0,2)}/${v.slice(2,4)}/${v.slice(4,8)}`;
+      else if (v.length >= 3) v = `${v.slice(0,2)}/${v.slice(2)}`;
+      e.target.value = v;
+    });
+
+    // C. Pad Logic on Blur (1/1/25 -> 01/01/2025)
+    const normalizeDate = () => {
+      const raw = mDate.value.trim();
+      if (!raw) return;
+      const parts = raw.split('/');
+      if (parts.length === 3) {
+        let m = parts[0];
+        let d = parts[1];
+        let y = parts[2];
+        
+        // Pad Single Digits
+        if (m.length === 1) m = '0' + m;
+        if (d.length === 1) d = '0' + d;
+        
+        // Handle Short Year (25 -> 2025)
+        if (y.length === 2) y = '20' + y;
+        
+        mDate.value = `${m}/${d}/${y}`;
+      }
+    };
+    mDate.addEventListener('change', normalizeDate);
+    mDate.addEventListener('blur', normalizeDate);
+
+    // ─── 2. Trigger Search on Enter ───
     [mDate, mClient, mPet].forEach(input => {
       input.addEventListener('keyup', (e) => {
         if (e.key === 'Enter') searchBtn.click();
       });
     });
 
-    // ─── Search Button Listener ───
+    // ─── 3. Search Button Listener ───
     searchBtn.addEventListener('click', () => {
+        normalizeDate(); // Ensure date is formatted before sending
+        
         results.innerHTML = `<div class="spinner"></div>`;
         results.scrollIntoView({ behavior: 'smooth' });
 
         google.script.run
         .withSuccessHandler(res => {
-            // 🔹 Always clear spinner first
             const spinner = results.querySelector('.spinner');
             if (spinner) spinner.remove();
 
@@ -89,10 +143,10 @@
         });
     });
 
-    // ———————————————————————————————————
-    // Clear button
+    // ─── 4. Clear button ───
     container.querySelector('#mClearBtn').addEventListener('click', () => {
         mDate.value = '';
+        mDatePicker.value = ''; // Clear picker too
         mClient.value = '';
         mPet.value = '';
         results.innerHTML = '';
