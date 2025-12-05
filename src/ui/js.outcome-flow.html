@@ -43,6 +43,15 @@
     const results = container.querySelector('#oResults');
     const dateInput = container.querySelector('#oDate');
     const datePicker = container.querySelector('#oDatePicker');
+    const searchBtn = container.querySelector('#oSearchBtn');
+
+    // ─── NEW: Trigger Search on Enter ───
+    // We select all text inputs in this specific container to catch Date, Client, and Pet
+    container.querySelectorAll('input[type="text"]').forEach(input => {
+      input.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') searchBtn.click();
+      });
+    });
 
     // ─── 1. Date Logic (Auto-Format & Picker) ───
     
@@ -88,7 +97,7 @@
 
 
     // ─── 2. Search Action ───
-    container.querySelector('#oSearchBtn').addEventListener('click', () => {
+    searchBtn.addEventListener('click', () => {
       normalizeDate(); // Ensure format is perfect before sending
       
       results.innerHTML = `<div class="spinner"></div>`;

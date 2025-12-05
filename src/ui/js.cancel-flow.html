@@ -36,8 +36,18 @@
     `;
 
     const results = container.querySelector('#cResults');
+    const searchBtn = container.querySelector('#cSearchBtn'); // Define button variable
 
-    container.querySelector('#cSearchBtn').addEventListener('click', () => {
+    // ─── NEW: Trigger Search on Enter ───
+    const inputs = container.querySelectorAll('input'); // Selects cDate, cClient, cPet
+    inputs.forEach(input => {
+      input.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') searchBtn.click();
+      });
+    });
+    // ────────────────────────────────────
+
+    searchBtn.addEventListener('click', () => {
       results.innerHTML = `<div class="spinner"></div>`;
       google.script.run
         .withSuccessHandler(res => {

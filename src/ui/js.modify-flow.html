@@ -47,9 +47,16 @@
     const mPet = container.querySelector('#mPet');
     const results = container.querySelector('#mResults');
 
-    // ———————————————————————————————————
-    // Search button
-    container.querySelector('#mSearchBtn').addEventListener('click', () => {
+    // ─── NEW: Trigger Search on Enter ───
+    [mDate, mClient, mPet].forEach(input => {
+      input.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') searchBtn.click();
+      });
+    });
+
+
+    // ─── Search Button Listener ───
+    searchBtn.addEventListener('click', () => {
         results.innerHTML = `<div class="spinner"></div>`;
         results.scrollIntoView({ behavior: 'smooth' });
 
@@ -60,9 +67,9 @@
             if (spinner) spinner.remove();
 
             if (!res || !res.ok) {
-            results.innerHTML = `<p class="error">${res?.error || 'Search failed.'}</p>`;
-            results.scrollIntoView({ behavior: 'smooth' });
-            return;
+                results.innerHTML = `<p class="error">${res?.error || 'Search failed.'}</p>`;
+                results.scrollIntoView({ behavior: 'smooth' });
+                return;
             }
 
             renderResults(results, res.rows || []);
