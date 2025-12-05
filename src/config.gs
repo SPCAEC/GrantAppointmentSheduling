@@ -70,7 +70,7 @@ const CFG = {
     CANCELLATION_REASON: 'Cancellation Reason',
 
     // ─── Optional Timestamp ────────────────────
-    UPDATED_AT: 'Updated At'
+    UPDATED_AT: 'Updated At',
     LOGGED_AT: 'Logged At'
   },
 
