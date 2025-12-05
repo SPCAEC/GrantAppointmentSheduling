@@ -18,7 +18,7 @@ function findOwnersInDb_(query) {
   const ss = getCentralSs_();
   const sh = ss.getSheetByName(CFG.TABS.OWNERS);
   const data = sh.getDataRange().getValues();
-  const headers = data.shift(); // Remove headers
+  const headers = data.shift(); // Remove headers from data array
   
   // Map headers
   const hMap = {};
@@ -27,6 +27,10 @@ function findOwnersInDb_(query) {
   const q = String(query || '').trim().toLowerCase();
   const qCleanPhone = q.replace(/\D/g, ''); // Digits only for phone search
   
+  // 🔹 FIX 1: Robust Column Lookup (Handles "Zip", "Zip Code", "Zipcode")
+  const idxZip = hMap['zip code'] !== undefined ? hMap['zip code'] : 
+                 (hMap['zip'] !== undefined ? hMap['zip'] : hMap['zipcode']);
+
   const matches = [];
   
   data.forEach((row, i) => {
@@ -35,7 +39,7 @@ function findOwnersInDb_(query) {
     const last = String(row[hMap['last name']] || '');
     const email = String(row[hMap['email']] || '').toLowerCase();
     const phone = String(row[hMap['phone']] || '');
-    const phoneClean = phone.replace(/\D/g, ''); // Digits only
+    const phoneClean = phone.replace(/\D/g, ''); 
     
     // MATCH LOGIC
     let isMatch = false;
@@ -47,21 +51,27 @@ function findOwnersInDb_(query) {
     if (email === q) isMatch = true;
     
     // 3. Phone Match (Fuzzy digits)
-    // If query has at least 7 digits, compare clean strings
     if (qCleanPhone.length >= 7 && phoneClean.includes(qCleanPhone)) isMatch = true;
     
     if (isMatch) {
+      // 🔹 FIX 2: Safely retrieve Zip and force to String
+      // This handles numbers (14224) and text ("14224") equally well
+      let zipVal = '';
+      if (idxZip !== undefined && row[idxZip] !== undefined && row[idxZip] !== '') {
+        zipVal = String(row[idxZip]);
+      }
+
       matches.push({
-        rowIndex: i + 2, // 1-based, +1 for header
+        rowIndex: i + 2, // 1-based, +1 for header removed
         ownerId: id,
         firstName: first,
         lastName: last,
         email: email,
         phone: phone,
-        address: row[hMap['street address']] || '',
+        address: row[hMap['street address']] || row[hMap['address']] || '', 
         city: row[hMap['city']] || '',
         state: row[hMap['state']] || '',
-        zip: row[hMap['zip code']] || '',
+        zip: zipVal, 
         notes: row[hMap['general notes']] || ''
       });
     }
@@ -184,7 +194,6 @@ function updatePetStatusInDb_(petId, newStatus, note, user) {
   throw new Error('Pet ID not found');
 }
 
-// ... [ID Generation and Upsert Logic will be added in next step when we wire the "Save New" flow] ...
 /* ─────────────────────────────────────────────────────────────
    WRITE OPERATIONS (Upsert Owner & Pet)
    ───────────────────────────────────────────────────────────── */
@@ -197,7 +206,7 @@ function getNextCentralId_(sheet, prefix) {
   if (lastRow < 2) return prefix + '000001';
   
   // Column A is always ID
-  const lastId = sheet.getRange(lastRow, 1).getValue(); 
+  const lastId = sheet.getRange(lastRow, 1).getValue();
   const num = parseInt(String(lastId).replace(/\D/g, ''), 10) || 0;
   return prefix + String(num + 1).padStart(6, '0');
 }
@@ -216,14 +225,17 @@ function upsertOwnerInDb_(payload, user) {
   const hMap = {};
   headers.forEach((h, i) => hMap[String(h).trim().toLowerCase()] = i);
   
-  let rowIdx = -1;
+  let rowIdx = -1; // 0-based Array Index
   let ownerId = payload[CFG.COLS.OWNER_ID];
 
-  // 1. Try to find existing by ID
+  // 1. Try to find existing by ID (Robust Search)
   if (ownerId) {
     const idCol = hMap['owner id'];
-    rowIdx = data.findIndex((r, i) => i > 0 && String(r[idCol]) === String(ownerId));
-    if (rowIdx !== -1) rowIdx += 1; // Adjust for 0-based index vs 1-based row
+    if (idCol !== undefined) {
+      const searchId = String(ownerId).trim().toLowerCase();
+      // Find index in the data array (skip header at 0)
+      rowIdx = data.findIndex((r, i) => i > 0 && String(r[idCol]).trim().toLowerCase() === searchId);
+    }
   }
 
   // 2. Prepare Row Data
@@ -246,15 +258,19 @@ function upsertOwnerInDb_(payload, user) {
     if (key === 'created by' && rowIdx === -1) return user;
     
     // Data Fields (Map payload keys to sheet headers)
-    // Payload keys might be "First Name", sheet is "First Name" -> match!
     const pKey = Object.keys(payload).find(k => k.toLowerCase() === key);
-    return pKey ? payload[pKey] : (rowIdx !== -1 ? data[rowIdx-1][hMap[key]] : ''); // Keep existing if update, blank if new
+    // If updating, preserve existing data if payload is missing that field
+    // If new, leave blank
+    const existingVal = (rowIdx !== -1) ? data[rowIdx][hMap[key]] : '';
+    return pKey ? payload[pKey] : existingVal;
   });
 
   // 3. Write
   if (rowIdx === -1) {
     sh.appendRow(rowData);
   } else {
+    // 🔹 FIX: Convert Array Index to Sheet Row (Index + 1)
+    // data[rowIdx] is the row. In 1-based sheet notation, that is rowIdx + 1.
     sh.getRange(rowIdx + 1, 1, 1, rowData.length).setValues([rowData]);
   }
   
@@ -279,8 +295,10 @@ function upsertPetInDb_(payload, user) {
 
   if (petId) {
     const idCol = hMap['pet id'];
-    rowIdx = data.findIndex((r, i) => i > 0 && String(r[idCol]) === String(petId));
-    if (rowIdx !== -1) rowIdx += 1;
+    if (idCol !== undefined) {
+      const searchId = String(petId).trim().toLowerCase();
+      rowIdx = data.findIndex((r, i) => i > 0 && String(r[idCol]).trim().toLowerCase() === searchId);
+    }
   }
 
   if (rowIdx === -1) {
@@ -296,17 +314,17 @@ function upsertPetInDb_(payload, user) {
     if (key === 'updated by') return user;
     if (key === 'created at' && rowIdx === -1) return timestamp;
     if (key === 'created by' && rowIdx === -1) return user;
-    if (key === 'pet status' && rowIdx === -1) return 'Active'; // Default new to Active
+    if (key === 'pet status' && rowIdx === -1) return 'Active'; 
 
     const pKey = Object.keys(payload).find(k => k.toLowerCase() === key);
-    // Be careful not to overwrite existing data with blanks if payload doesn't have it
-    // But for Pet Form, we usually send full data.
-    return pKey ? payload[pKey] : (rowIdx !== -1 ? data[rowIdx-1][hMap[key]] : '');
+    const existingVal = (rowIdx !== -1) ? data[rowIdx][hMap[key]] : '';
+    return pKey ? payload[pKey] : existingVal;
   });
 
   if (rowIdx === -1) {
     sh.appendRow(rowData);
   } else {
+    // 🔹 FIX: Convert Array Index to Sheet Row (Index + 1)
     sh.getRange(rowIdx + 1, 1, 1, rowData.length).setValues([rowData]);
   }
   
