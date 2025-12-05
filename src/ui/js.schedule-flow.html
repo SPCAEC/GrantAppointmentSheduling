@@ -29,7 +29,7 @@ function renderScheduleFlow(container) {
       <div id="slotGrid" class="card-grid"></div>
       <div class="actions">
         <button id="showMoreBtn" class="btn secondary">Show More</button>
-        <button id="rogueBtn" class="btn tertiary" style="border:2px dashed #dc2626; color:#dc2626;">Go Rogue</button>
+        <button id="rogueBtn" class="btn tertiary" style="border:2px dashed #dc2626; color:#dc2626;">Go Rogue (Create Exception)</button>
       </div>
     </div>
 
@@ -157,11 +157,21 @@ function renderScheduleFlow(container) {
     grid.innerHTML = '<div class="spinner"></div>';
     google.script.run.withSuccessHandler(res => {
       grid.innerHTML = '';
-      if(!res.ok || !res.slots.length) { grid.innerHTML = '<p>No slots.</p>'; return; }
+      if(!res.ok || !res.slots.length) { grid.innerHTML = '<p>No slots available.</p>'; return; }
+      
       res.slots.forEach(s => {
         const card = document.createElement('div');
         card.className = 'card';
-        card.innerHTML = `<div>${s.day} ${s.date}</div><div>${s.time}</div>`;
+        
+        // RESTORED: Full tile layout with Type, Grant, and ID
+        card.innerHTML = `
+          <div style="font-weight:700; font-size:1.05rem; margin-bottom:0.25rem;">${TX.type}</div>
+          <div style="margin-bottom:0.1rem;">${s.day} ${s.date}</div>
+          <div style="font-size:1.1rem; font-weight:600; margin-bottom:0.25rem;">${s.time}</div>
+          <div style="font-size:0.9rem; color:#444;">Grant: ${s.grant || 'None'}</div>
+          <div style="font-size:0.75rem; opacity:0.5; margin-top:0.4rem;">ID: ${s.id}</div>
+        `;
+        
         card.onclick = () => {
           TX.slot = s;
           TX.isRogue = false;
@@ -170,7 +180,6 @@ function renderScheduleFlow(container) {
         grid.appendChild(card);
       });
     }).apiGetAvailableSlots(TX.type, slotsCount);
-  }
   
   container.querySelector('#showMoreBtn').onclick = () => { slotsCount += 6; loadSlots(); };
   container.querySelector('#rogueBtn').onclick = () => {
