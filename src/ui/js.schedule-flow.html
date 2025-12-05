@@ -1,203 +1,147 @@
 <script>
-function renderScheduleFlow(container) {
-  const { getClientCache, setClientCache, clearClientCache, backBtn, sectionTitle } = window.SPCA;
-  sectionTitle.textContent = 'Schedule New Appointment';
+(function() {
+  const { backBtn, sectionTitle } = window.SPCA || {};
 
-  // ─── STATE ───────────────────────────────────────────
-  const TX = {
-    scheduler: (typeof getSchedulerName === 'function') ? getSchedulerName() : 'Staff',
-    type: null,
-    slot: null,
-    isRogue: false,
-    rogueData: {},
-    owner: null, // { ownerId, firstName, ... }
-    pet: null,   // { petId, name, ... }
-  };
+  window.renderScheduleFlow = function(container) {
+    if(sectionTitle) sectionTitle.textContent = 'Schedule New Appointment';
 
-  // ─── TEMPLATE ────────────────────────────────────────
-  container.innerHTML = `
-    <div id="step-type" class="schedule-step">
-      <h2>Appointment Type</h2>
-      <div class="option-buttons">
-        <button class="btn" data-type="Surgery">Surgery</button>
-        <button class="btn" data-type="Wellness">Wellness</button>
-      </div>
-    </div>
+    // ─── STATE ───────────────────────────────────────────
+    const TX = {
+      scheduler: (typeof getSchedulerName === 'function') ? getSchedulerName() : 'Staff',
+      type: null,
+      slot: null,
+      isRogue: false,
+      rogueData: {},
+      owner: null,
+      pet: null,
+    };
 
-    <div id="step-slots" class="schedule-step hidden">
-      <h2>Select Slot</h2>
-      <div id="slotGrid" class="card-grid"></div>
-      <div class="actions">
-        <button id="showMoreBtn" class="btn secondary">Show More</button>
-        <button id="rogueBtn" class="btn tertiary" style="border:2px dashed #dc2626; color:#dc2626;">Go Rogue (Create Exception)</button>
-      </div>
-    </div>
-
-    <div id="step-rogue" class="schedule-step hidden">
-      <div style="background:#fff1f2; padding:1rem; border-radius:8px; border:1px solid #dc2626; margin-bottom:1.5rem;">
-        <h3 style="color:#b91c1c; margin-top:0;">Exception Details</h3>
-        <div class="field"><label>Date (MM/DD/YYYY)</label><input id="rDate" type="text" placeholder="MM/DD/YYYY"></div>
-        <div class="grid" style="grid-template-columns:1fr 1fr; gap:1rem; display:grid;">
-          <div class="field"><label>Time</label><input id="rTime" type="text" placeholder="09:00"></div>
-          <div class="field"><label>AM/PM</label><select id="rAmPm"><option>AM</option><option>PM</option></select></div>
+    // ─── TEMPLATE ────────────────────────────────────────
+    container.innerHTML = `
+      <div id="step-type" class="schedule-step">
+        <h2>Appointment Type</h2>
+        <div class="option-buttons">
+          <button class="btn" data-type="Surgery">Surgery</button>
+          <button class="btn" data-type="Wellness">Wellness</button>
         </div>
       </div>
-      <div class="actions"><button id="rNext" class="btn">Next</button></div>
-    </div>
 
-    <div id="step-search" class="schedule-step hidden">
-      <h2>Find Client</h2>
-      <p style="font-size:0.9rem; color:#666;">Search by Phone, Email, or Owner ID.</p>
-      <div class="field" style="display:flex; gap:0.5rem;">
-        <input id="qSearch" type="text" placeholder="e.g. 716-555-0100 or Smith">
-        <button id="btnSearch" class="btn">Search</button>
-      </div>
-      <div id="searchResults" style="margin-top:1rem;"></div>
-      <div class="actions" style="justify-content:flex-start;">
-        <button id="btnNewClient" class="btn secondary">Create New Client</button>
-      </div>
-    </div>
-
-    <div id="step-owner" class="schedule-step hidden">
-      <h2>Confirm Owner Info</h2>
-      <input type="hidden" id="ownerId">
-      <div class="grid" style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
-        <div class="field"><label>First Name</label><input id="oFirst"></div>
-        <div class="field"><label>Last Name</label><input id="oLast"></div>
-      </div>
-      <div class="field"><label>Phone</label><input id="oPhone"></div>
-      <div class="field"><label>Email</label><input id="oEmail"></div>
-      <div class="field"><label>Address</label><input id="oAddress"></div>
-      <div class="grid" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.5rem;">
-        <div class="field"><label>City</label><input id="oCity"></div>
-        <div class="field"><label>State</label><input id="oState"></div>
-        <div class="field"><label>Zip</label><input id="oZip"></div>
-      </div>
-      <div class="actions">
-        <button id="btnSaveOwner" class="btn">Save & Select Pet</button>
-      </div>
-    </div>
-
-    <div id="step-pet" class="schedule-step hidden">
-      <h2>Pet Details</h2>
-      <input type="hidden" id="petId">
-      <div class="field"><label>Pet Name</label><input id="pName"></div>
-      <div class="field"><label>Species</label>
-        <select id="pSpecies">
-          <option value="">— Select —</option><option>Canine</option><option>Feline</option><option>Other</option>
-        </select>
-      </div>
-      <div class="grid" style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
-        <div class="field"><label>Breed 1</label><input id="pBreed1"></div>
-        <div class="field"><label>Breed 2</label><input id="pBreed2"></div>
-        <div class="field"><label>Color</label><input id="pColor"></div>
-        <div class="field"><label>Pattern</label><input id="pPattern"></div>
-        <div class="field"><label>Sex</label><select id="pSex"><option>Male</option><option>Female</option><option>Unknown</option></select></div>
-        <div class="field"><label>Spayed/Neutered</label><select id="pFixed"><option>Spayed</option><option>Neutered</option><option>No</option><option>Unknown</option></select></div>
-      </div>
-      <div class="grid" style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
-        <div class="field"><label>Age</label><input id="pAge"></div>
-        <div class="field"><label>Weight</label><input id="pWeight" type="number"></div>
-      </div>
-      <div class="actions">
-        <button id="btnSavePet" class="btn">Save & Continue</button>
-      </div>
-    </div>
-
-    <div id="step-details" class="schedule-step hidden">
-      <h2>Appointment Details</h2>
-      <div style="background:#f0f9ff; padding:1rem; border-radius:8px; margin-bottom:1rem; border:1px solid #bae6fd;">
-        <strong id="dispType"></strong><br>
-        <span id="dispSlot"></span><br>
-        Client: <strong id="dispOwner"></strong> | Pet: <strong id="dispPet"></strong>
-      </div>
-      
-      <div class="field">
-        <label>Vaccines Needed</label>
-        <div id="vaccines" class="option-list"></div>
-      </div>
-      <div class="field">
-        <label>Additional Services</label>
-        <div id="services" class="option-list"></div>
-      </div>
-      <div class="field">
-        <label>Previous Vet Records?</label>
-        <div class="option-buttons-left">
-          <label><input type="radio" name="hasRec" value="Yes"> Yes</label>
-          <label><input type="radio" name="hasRec" value="No" checked> No</label>
+      <div id="step-slots" class="schedule-step hidden">
+        <h2>Select Slot</h2>
+        <div id="slotGrid" class="card-grid"></div>
+        <div class="actions">
+          <button id="showMoreBtn" class="btn secondary">Show More</button>
+          <button id="rogueBtn" class="btn tertiary" style="border:2px dashed #dc2626; color:#dc2626;">Go Rogue (Create Exception)</button>
         </div>
       </div>
-      <div class="field"><label>Vet Office</label><input id="aVet"></div>
-      <div class="field"><label>Allergies</label><input id="aAllergy"></div>
-      <div class="field"><label>Notes</label><textarea id="aNotes"></textarea></div>
-      
-      <div class="actions">
-        <button id="btnFinalize" class="btn">Finish</button>
+
+      <div id="step-rogue" class="schedule-step hidden">
+        <div style="background:#fff1f2; padding:1rem; border-radius:8px; border:1px solid #dc2626; margin-bottom:1.5rem;">
+          <h3 style="color:#b91c1c; margin-top:0;">Exception Details</h3>
+          <div class="field"><label>Date (MM/DD/YYYY)</label><input id="rDate" type="text" placeholder="MM/DD/YYYY"></div>
+          <div class="grid" style="grid-template-columns:1fr 1fr; gap:1rem; display:grid;">
+            <div class="field"><label>Time</label><input id="rTime" type="text" placeholder="09:00"></div>
+            <div class="field"><label>AM/PM</label><select id="rAmPm"><option>AM</option><option>PM</option></select></div>
+          </div>
+        </div>
+        <div class="actions"><button id="rNext" class="btn">Next</button></div>
       </div>
-    </div>
 
-    <div id="step-loading" class="schedule-step hidden"><div class="spinner"></div></div>
-  `;
+      <div id="step-search" class="schedule-step hidden">
+        <h2>Find Client</h2>
+        <p style="font-size:0.9rem; color:#666;">Search by Phone, Email, or Owner ID.</p>
+        <div class="field" style="display:flex; gap:0.5rem;">
+          <input id="qSearch" type="text" placeholder="e.g. 716-555-0100 or Smith">
+          <button id="btnSearch" class="btn">Search</button>
+        </div>
+        <div id="searchResults" style="margin-top:1rem;"></div>
+        <div class="actions" style="justify-content:flex-start;">
+          <button id="btnNewClient" class="btn secondary">Create New Client</button>
+        </div>
+      </div>
 
-  // ─── LOGIC CONTROLLER ────────────────────────────────
+      <div id="step-owner" class="schedule-step hidden">
+        <h2>Confirm Owner Info</h2>
+        <input type="hidden" id="ownerId">
+        <div class="grid" style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+          <div class="field"><label>First Name</label><input id="oFirst"></div>
+          <div class="field"><label>Last Name</label><input id="oLast"></div>
+        </div>
+        <div class="field"><label>Phone</label><input id="oPhone"></div>
+        <div class="field"><label>Email</label><input id="oEmail"></div>
+        <div class="field"><label>Address</label><input id="oAddress"></div>
+        <div class="grid" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.5rem;">
+          <div class="field"><label>City</label><input id="oCity"></div>
+          <div class="field"><label>State</label><input id="oState"></div>
+          <div class="field"><label>Zip</label><input id="oZip"></div>
+        </div>
+        <div class="actions">
+          <button id="btnSaveOwner" class="btn">Save & Select Pet</button>
+        </div>
+      </div>
 
-  // --- Step 1: Type ---
-  container.querySelectorAll('#step-type button').forEach(b => {
-    b.addEventListener('click', () => {
-      TX.type = b.dataset.type;
-      nextStep('step-type', 'step-slots');
-      loadSlots();
-    });
-  });
+      <div id="step-pet" class="schedule-step hidden">
+        <h2>Pet Details</h2>
+        <input type="hidden" id="petId">
+        <div class="field"><label>Pet Name</label><input id="pName"></div>
+        <div class="field"><label>Species</label>
+          <select id="pSpecies">
+            <option value="">— Select —</option><option>Canine</option><option>Feline</option><option>Other</option>
+          </select>
+        </div>
+        <div class="grid" style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+          <div class="field"><label>Breed 1</label><input id="pBreed1"></div>
+          <div class="field"><label>Breed 2</label><input id="pBreed2"></div>
+          <div class="field"><label>Color</label><input id="pColor"></div>
+          <div class="field"><label>Pattern</label><input id="pPattern"></div>
+          <div class="field"><label>Sex</label><select id="pSex"><option>Male</option><option>Female</option><option>Unknown</option></select></div>
+          <div class="field"><label>Spayed/Neutered</label><select id="pFixed"><option>Spayed</option><option>Neutered</option><option>No</option><option>Unknown</option></select></div>
+        </div>
+        <div class="grid" style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+          <div class="field"><label>Age</label><input id="pAge"></div>
+          <div class="field"><label>Weight</label><input id="pWeight" type="number"></div>
+        </div>
+        <div class="actions">
+          <button id="btnSavePet" class="btn">Save & Continue</button>
+        </div>
+      </div>
 
-  // --- Step 2: Slots ---
-  let slotsCount = 6;
-
-  function loadSlots() {
-    const grid = container.querySelector('#slotGrid');
-    grid.innerHTML = '<div class="spinner"></div>';
-    
-    google.script.run.withSuccessHandler(res => {
-      grid.innerHTML = '';
-      if(!res.ok || !res.slots.length) { 
-        grid.innerHTML = '<p>No slots available.</p>'; 
-        return; 
-      }
-      
-      res.slots.forEach(s => {
-        const card = document.createElement('div');
-        card.className = 'card';
+      <div id="step-details" class="schedule-step hidden">
+        <h2>Appointment Details</h2>
+        <div style="background:#f0f9ff; padding:1rem; border-radius:8px; margin-bottom:1rem; border:1px solid #bae6fd;">
+          <strong id="dispType"></strong><br>
+          <span id="dispSlot"></span><br>
+          Client: <strong id="dispOwner"></strong> | Pet: <strong id="dispPet"></strong>
+        </div>
         
-        // RESTORED: Full tile layout with Type, Grant, and ID
-        card.innerHTML = `
-          <div style="font-weight:700; font-size:1.05rem; margin-bottom:0.25rem;">${TX.type}</div>
-          <div style="margin-bottom:0.1rem;">${s.day} ${s.date}</div>
-          <div style="font-size:1.1rem; font-weight:600; margin-bottom:0.25rem;">${s.time}</div>
-          <div style="font-size:0.9rem; color:#444;">Grant: ${s.grant || 'None'}</div>
-          <div style="font-size:0.75rem; opacity:0.5; margin-top:0.4rem;">ID: ${s.id}</div>
-        `;
+        <div class="field">
+          <label>Vaccines Needed</label>
+          <div id="vaccines" class="option-list"></div>
+        </div>
+        <div class="field">
+          <label>Additional Services</label>
+          <div id="services" class="option-list"></div>
+        </div>
+        <div class="field">
+          <label>Previous Vet Records?</label>
+          <div class="option-buttons-left">
+            <label><input type="radio" name="hasRec" value="Yes"> Yes</label>
+            <label><input type="radio" name="hasRec" value="No" checked> No</label>
+          </div>
+        </div>
+        <div class="field"><label>Vet Office</label><input id="aVet"></div>
+        <div class="field"><label>Allergies</label><input id="aAllergy"></div>
+        <div class="field"><label>Notes</label><textarea id="aNotes"></textarea></div>
         
-        card.onclick = () => {
-          TX.slot = s;
-          TX.isRogue = false;
-          nextStep('step-slots', 'step-search');
-        };
-        grid.appendChild(card);
-      });
-    }).apiGetAvailableSlots(TX.type, slotsCount);
-  } // <--- THIS CLOSING BRACE WAS MISSING
+        <div class="actions">
+          <button id="btnFinalize" class="btn">Finish</button>
+        </div>
+      </div>
 
-  // These event listeners should be outside the function
-  container.querySelector('#showMoreBtn').onclick = () => { slotsCount += 6; loadSlots(); };
-  
-  container.querySelector('#rogueBtn').onclick = () => {
-    TX.isRogue = true;
-    setupRogueFormatters();
-    nextStep('step-slots', 'step-rogue');
-  };
+      <div id="step-loading" class="schedule-step hidden"><div class="spinner"></div></div>
+    `;
 
-  // --- Rogue Form ---
-  function setupRogueFormatters() {
+    // ─── INITIALIZE ROGUE FORMATTERS (RUN ONCE) ──────────
     const dInput = container.querySelector('#rDate');
     const tInput = container.querySelector('#rTime');
     
@@ -218,476 +162,521 @@ function renderScheduleFlow(container) {
         e.target.value = v;
       }
     });
-  }
 
-  container.querySelector('#rNext').onclick = () => {
-    const d = container.querySelector('#rDate').value;
-    const t = container.querySelector('#rTime').value;
-    if(!d || !t) return alert('Date/Time required');
-    
-    // Warning Modal
-    const warnModal = document.createElement('div');
-    warnModal.className = 'modal';
-    warnModal.innerHTML = `
-      <div class="modal-content" style="border-top: 6px solid #dc2626;">
-        <h2 style="color:#b91c1c;">⚠️ Exception Warning</h2>
-        <p>By scheduling this appointment a new slot will be created as a one-time exception for this client.</p>
-        <p><strong>Please only continue if Lipsey or the Infirmary has already approved this date/time.</strong></p>
-        <div class="actions">
-          <button id="rogueConfirm" class="btn" style="background:#dc2626;">I Understand, Create It</button>
-          <button id="rogueCancel" class="btn secondary">Cancel</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(warnModal);
 
-    warnModal.querySelector('#rogueCancel').onclick = () => warnModal.remove();
-    warnModal.querySelector('#rogueConfirm').onclick = () => {
-       warnModal.remove();
-       TX.rogueData = { date: d, time: t, ampm: container.querySelector('#rAmPm').value };
-       nextStep('step-rogue', 'step-search');
-    };
-  };
+    // ─── LOGIC CONTROLLER ────────────────────────────────
 
-  // --- Step 3: Client Search ---
-  const qSearch = container.querySelector('#qSearch');
-  const sRes = container.querySelector('#searchResults');
-  
-  container.querySelector('#btnSearch').onclick = () => {
-    sRes.innerHTML = '<div class="spinner"></div>';
-    google.script.run.withSuccessHandler(matches => {
-      sRes.innerHTML = '';
-      if(!matches.length) { 
-          sRes.innerHTML = '<p>No matches found.</p>'; 
-          return; 
-      }
-      
-      // Auto-skip if 1 match
-      if(matches.length === 1) {
-          TX.owner = matches[0];
-          populateOwnerForm(matches[0]);
-          nextStep('step-search', 'step-owner');
-          return;
-      }
-
-      matches.forEach(m => {
-        const row = document.createElement('div');
-        row.className = 'card';
-        row.style.marginBottom = '0.5rem';
-        row.style.cursor = 'pointer';
-        row.innerHTML = `<strong>${m.firstName} ${m.lastName}</strong><br>${m.phone}<br>${m.email}<br><small>${m.ownerId}</small>`;
-        row.onclick = () => {
-          TX.owner = m;
-          populateOwnerForm(m);
-          nextStep('step-search', 'step-owner');
-        };
-        sRes.appendChild(row);
+    // --- Step 1: Type ---
+    container.querySelectorAll('#step-type button').forEach(b => {
+      b.addEventListener('click', () => {
+        TX.type = b.dataset.type;
+        nextStep('step-type', 'step-slots');
+        loadSlots();
       });
-    }).apiSearchOwners(qSearch.value);
-  };
-
-  container.querySelector('#btnNewClient').onclick = () => {
-    TX.owner = null; // New
-    populateOwnerForm({}); 
-    nextStep('step-search', 'step-owner');
-  };
-
-  // --- Step 4: Owner Form ---
-  function populateOwnerForm(data) {
-    const ids = ['oFirst','oLast','oPhone','oEmail','oAddress','oCity','oState','oZip','ownerId'];
-    ids.forEach(id => container.querySelector('#'+id).value = '');
-    
-    if(data.firstName) container.querySelector('#oFirst').value = data.firstName;
-    if(data.lastName) container.querySelector('#oLast').value = data.lastName;
-    if(data.phone) container.querySelector('#oPhone').value = data.phone;
-    if(data.email) container.querySelector('#oEmail').value = data.email;
-    if(data.address) container.querySelector('#oAddress').value = data.address;
-    if(data.city) container.querySelector('#oCity').value = data.city;
-    if(data.state) container.querySelector('#oState').value = data.state;
-    if(data.zip) container.querySelector('#oZip').value = data.zip;
-    if(data.ownerId) container.querySelector('#ownerId').value = data.ownerId;
-  }
-
-  // Format Phone
-  const pInput = container.querySelector('#oPhone');
-  pInput.addEventListener('blur', () => {
-      const digits = pInput.value.replace(/\D/g, '');
-      if (digits.length === 10) {
-        pInput.value = `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
-      }
-  });
-
-  container.querySelector('#btnSaveOwner').onclick = () => {
-    const payload = {
-      'Owner ID': container.querySelector('#ownerId').value,
-      'First Name': container.querySelector('#oFirst').value,
-      'Last Name': container.querySelector('#oLast').value,
-      'Phone': container.querySelector('#oPhone').value,
-      'Email': container.querySelector('#oEmail').value,
-      'Street Address': container.querySelector('#oAddress').value,
-      'City': container.querySelector('#oCity').value,
-      'State': container.querySelector('#oState').value,
-      'Zip Code': container.querySelector('#oZip').value
-    };
-    
-    const btn = container.querySelector('#btnSaveOwner');
-    btn.textContent = 'Saving...';
-    btn.disabled = true;
-
-    google.script.run.withSuccessHandler(id => {
-      btn.textContent = 'Save & Select Pet';
-      btn.disabled = false;
-      TX.owner = { ...payload, ownerId: id };
-      showPetModal(id);
-    }).apiUpsertOwner(payload, TX.scheduler);
-  };
-
-  // --- Step 5: Pet Modal ---
-  function showPetModal(ownerId) {
-    const modal = document.createElement('div');
-    modal.className = 'modal';
-    modal.innerHTML = `
-      <div class="modal-content" style="max-width:600px;">
-        <h2>Select Pet</h2>
-        <div id="petList" class="card-grid"></div>
-        <div class="actions">
-          <button id="btnAddPet" class="btn secondary">+ Add New Pet</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(modal);
-    
-    const list = modal.querySelector('#petList');
-    list.innerHTML = '<div class="spinner"></div>';
-
-    google.script.run.withSuccessHandler(pets => {
-      list.innerHTML = '';
-      if(!pets.length) list.innerHTML = '<p>No active pets found.</p>';
-      
-      pets.forEach(p => {
-        const card = document.createElement('div');
-        card.className = 'card';
-        card.innerHTML = `
-          <strong>${p.name}</strong> (${p.species})<br>${p.breed}<br>
-          <div style="margin-top:0.5rem; border-top:1px solid #eee; padding-top:0.5rem;">
-             <button class="btn-sm-status" style="font-size:0.8rem; background:none; border:none; color:blue; cursor:pointer;">Update Status</button>
-          </div>
-          <div class="status-edit hidden" style="margin-top:0.5rem; background:#f9fafb; padding:4px;">
-             <select class="pStat"><option>Rehomed</option><option>Deceased</option></select>
-             <input class="pNote" placeholder="Note (e.g. date passed)" style="width:90%; margin-top:4px;">
-             <button class="btn-save-stat btn tertiary" style="font-size:0.8rem; margin-top:4px;">Save</button>
-          </div>
-        `;
-        
-        card.addEventListener('click', (e) => {
-           if(e.target.closest('.status-edit') || e.target.classList.contains('btn-sm-status')) return;
-           TX.pet = p;
-           modal.remove();
-           populatePetForm(p);
-           nextStep('step-owner', 'step-pet');
-        });
-
-        const statBtn = card.querySelector('.btn-sm-status');
-        const statPanel = card.querySelector('.status-edit');
-        const saveStat = card.querySelector('.btn-save-stat');
-        
-        statBtn.onclick = (e) => { e.stopPropagation(); statPanel.classList.toggle('hidden'); };
-        
-        saveStat.onclick = (e) => {
-           e.stopPropagation();
-           const newStat = card.querySelector('.pStat').value;
-           const note = card.querySelector('.pNote').value;
-           saveStat.textContent = '...';
-           google.script.run.withSuccessHandler(() => {
-              card.style.opacity = '0.5';
-              card.innerHTML = `<em style="color:red;">Marked as ${newStat}</em>`;
-           }).apiUpdatePetStatus(p.petId, newStat, note, TX.scheduler);
-        };
-
-        list.appendChild(card);
-      });
-    }).apiGetOwnerPets(ownerId);
-
-    modal.querySelector('#btnAddPet').onclick = () => {
-       TX.pet = null;
-       modal.remove();
-       populatePetForm({});
-       nextStep('step-owner', 'step-pet');
-    };
-  }
-
-  // --- Step 6: Pet Form ---
-  function populatePetForm(p) {
-    const ids = ['petId','pName','pSpecies','pBreed1','pBreed2','pColor','pPattern','pSex','pFixed','pAge','pWeight'];
-    ids.forEach(id => container.querySelector('#'+id).value = '');
-    
-    if(p.petId) container.querySelector('#petId').value = p.petId;
-    if(p.name) container.querySelector('#pName').value = p.name;
-    if(p.species) container.querySelector('#pSpecies').value = p.species;
-    if(p.breed) container.querySelector('#pBreed1').value = p.breed;
-    if(p.color) container.querySelector('#pColor').value = p.color;
-    if(p.age) container.querySelector('#pAge').value = p.age;
-    if(p.sex) container.querySelector('#pSex').value = p.sex;
-    if(p.fixed) container.querySelector('#pFixed').value = p.fixed;
-  }
-
-  container.querySelector('#btnSavePet').onclick = () => {
-    const payload = {
-      'Pet ID': container.querySelector('#petId').value,
-      'Owner ID': TX.owner.ownerId,
-      'Pet Name': container.querySelector('#pName').value,
-      'Species': container.querySelector('#pSpecies').value,
-      'Primary Breed': container.querySelector('#pBreed1').value,
-      'Secondary Breed': container.querySelector('#pBreed2').value,
-      'Color': container.querySelector('#pColor').value,
-      'Color Pattern': container.querySelector('#pPattern').value,
-      'Sex': container.querySelector('#pSex').value,
-      'Altered': container.querySelector('#pFixed').value,
-      'Age': container.querySelector('#pAge').value,
-      'Weight': container.querySelector('#pWeight').value
-    };
-
-    const btn = container.querySelector('#btnSavePet');
-    btn.textContent = 'Saving...';
-    btn.disabled = true;
-
-    google.script.run.withSuccessHandler(id => {
-       TX.pet = { ...payload, petId: id };
-       prepDetails();
-       nextStep('step-pet', 'step-details');
-    }).apiUpsertPet(payload, TX.scheduler);
-  };
-
-  // --- Step 7: Appt Details ---
-  function prepDetails() {
-    container.querySelector('#dispType').textContent = TX.type;
-    if(TX.isRogue) {
-       container.querySelector('#dispSlot').textContent = `EXCEPTION: ${TX.rogueData.date} @ ${TX.rogueData.time}`;
-    } else {
-       container.querySelector('#dispSlot').textContent = `${TX.slot.day} ${TX.slot.date} @ ${TX.slot.time}`;
-    }
-    container.querySelector('#dispOwner').textContent = TX.owner['First Name'] + ' ' + TX.owner['Last Name'];
-    container.querySelector('#dispPet').textContent = TX.pet['Pet Name'];
-
-    const species = TX.pet['Species'];
-    const vacList = container.querySelector('#vaccines');
-    const svcList = container.querySelector('#services');
-    
-    google.script.run.withSuccessHandler(res => {
-       const lists = { canine: res.canine, feline: res.feline };
-       const opts = (species === 'Canine') ? lists.canine : (species === 'Feline' ? lists.feline : []);
-       vacList.innerHTML = opts.length 
-         ? opts.map(v => `<label class="radio-option"><input type="checkbox" name="vaccine" value="${v}"> ${v}</label>`).join('')
-         : '<p>No vaccines available</p>';
-    }).apiGetVaccineLists();
-
-    google.script.run.withSuccessHandler(res => {
-       svcList.innerHTML = res.services.map(s => 
-         `<label class="radio-option"><input type="checkbox" name="service" value="${s}"> ${s}</label>`).join('');
-    }).apiGetAdditionalServices();
-  }
-
-  container.querySelector('#btnFinalize').onclick = () => {
-     showTransportModal();
-  };
-
-  // ─── TRANSPORT MODAL (RESTORED FULL LOGIC) ───
-  function showTransportModal() {
-    const hasVetRecords = container.querySelector('input[name="hasRec"]:checked')?.value === 'Yes';
-    const modal = document.createElement('div');
-    modal.className = 'modal';
-
-    let inner = `
-      <div class="modal-content">
-        <p>Does this client require transportation assistance?</p>
-        <div class="actions transport-actions">
-          <button class="btn transportBtn" data-val="Yes">Yes</button>
-          <button class="btn transportBtn" data-val="No">No</button>
-        </div>
-        <hr class="divider">
-        ${hasVetRecords ? `
-          <p>You indicated the client has previous veterinary records. Please upload, send request, or remind.</p>
-          <div class="actions">
-            <input type="file" id="recordsUpload" multiple style="display:none;">
-            <button id="uploadBtn" class="btn" disabled>Upload</button>
-            <button id="sendRequestBtn" class="btn secondary" disabled>Request</button>
-            <button id="remindLaterBtn" class="btn tertiary" disabled>Remind</button>
-          </div>
-          <div id="uploadList" class="upload-list"></div>
-          <div id="modalToast"></div>
-        ` : ``}
-      </div>
-    `;
-    modal.innerHTML = inner;
-    document.body.appendChild(modal);
-
-    const toast = (msg, k) => { 
-        const t = modal.querySelector('#modalToast'); 
-        if(t) { t.textContent = msg; t.className = k==='error'?'error':'success-message'; }
-    };
-
-    let transport = null;
-    modal.querySelectorAll('.transportBtn').forEach(b => {
-       b.onclick = () => {
-          modal.querySelectorAll('.transportBtn').forEach(x => x.classList.remove('selected'));
-          b.classList.add('selected');
-          transport = b.dataset.val;
-          if(!hasVetRecords) {
-             modal.remove();
-             doBook(transport);
-          } else {
-             modal.querySelectorAll('.btn').forEach(x => x.removeAttribute('disabled'));
-          }
-       };
     });
 
-    if(hasVetRecords) {
-        // Upload
-        modal.querySelector('#uploadBtn').onclick = () => {
-            const input = modal.querySelector('#recordsUpload');
-            input.click();
-            input.onchange = () => {
-               const files = [...input.files];
-               if(!files.length) return;
-               
-               // Create Folder first
-               google.script.run.withSuccessHandler(res => {
-                  if(!res.ok) return toast('Folder error', 'error');
-                  let done = 0;
-                  files.forEach(f => {
-                     const reader = new FileReader();
-                     reader.onload = e => {
-                        const b64 = e.target.result.split(',')[1];
-                        google.script.run.withSuccessHandler(() => {
-                           done++;
-                           if(done === files.length) {
-                              toast('Uploaded!', 'success');
-                              setTimeout(() => { modal.remove(); doBook(transport); }, 1000);
-                           }
-                        }).apiUploadVetRecord(f.name, b64, res.folderId);
-                     };
-                     reader.readAsDataURL(f);
-                  });
-               }).apiCreateVetRecordsFolder(TX.owner['First Name'], TX.owner['Last Name'], TX.pet['Pet Name'], TX.owner['Email']);
-            };
-        };
+    // --- Step 2: Slots ---
+    let slotsCount = 6;
 
-        // Request
-        modal.querySelector('#sendRequestBtn').onclick = () => {
-           const btn = modal.querySelector('#sendRequestBtn');
-           btn.textContent = 'Sending...';
-           google.script.run.withSuccessHandler(res => {
-              if(res.ok) {
-                 toast('Sent!', 'success');
-                 setTimeout(() => { modal.remove(); doBook(transport); }, 1000);
-              } else toast('Error sending', 'error');
-           }).apiSendVetRecordsRequest(TX.owner['Email'], '', TX.owner['First Name'], TX.pet['Pet Name']);
-        };
-
-        // Remind
-        modal.querySelector('#remindLaterBtn').onclick = () => {
-           const btn = modal.querySelector('#remindLaterBtn');
-           btn.textContent = 'Sending...';
-           const card = `${TX.slot ? TX.slot.date : TX.rogueData.date}`;
-           google.script.run.withSuccessHandler(res => {
-              if(res.ok) {
-                 toast('Reminder set!', 'success');
-                 setTimeout(() => { modal.remove(); doBook(transport); }, 1000);
-              }
-           }).apiSendVetRecordReminder(TX.scheduler, TX.pet['Pet Name'], card);
-        };
-    }
-  }
-
-  // ─── BOOKING ─────────────────────────────────────────
-  function doBook(transport) {
-     const loading = container.querySelector('#step-loading');
-     const details = container.querySelector('#step-details');
-     details.classList.add('hidden');
-     loading.classList.remove('hidden');
-
-     const payload = {
-        'Owner ID': TX.owner.ownerId,
-        'Pet ID': TX.pet.petId,
-        'First Name': TX.owner['First Name'],
-        'Last Name': TX.owner['Last Name'],
-        'Phone Number': TX.owner['Phone'],
-        'Email': TX.owner['Email'],
-        'Address': TX.owner['Street Address'], // Map back to legacy sheet headers
-        'Street Address': TX.owner['Street Address'], // Map for central
-        'City': TX.owner['City'],
-        'State': TX.owner['State'],
-        'Zip Code': TX.owner['Zip Code'],
+    function loadSlots() {
+      const grid = container.querySelector('#slotGrid');
+      grid.innerHTML = '<div class="spinner"></div>';
+      
+      google.script.run.withSuccessHandler(res => {
+        grid.innerHTML = '';
+        if(!res.ok || !res.slots.length) { 
+          grid.innerHTML = '<p>No slots available.</p>'; 
+          return; 
+        }
         
-        'Pet Name': TX.pet['Pet Name'],
-        'Species': TX.pet['Species'],
-        'Breed One': TX.pet['Primary Breed'],
-        'Breed Two': TX.pet['Secondary Breed'],
-        'Color': TX.pet['Color'],
-        'Color Pattern': TX.pet['Color Pattern'],
-        'Sex': TX.pet['Sex'],
-        'Spayed or Neutered': TX.pet['Altered'],
-        'Age': TX.pet['Age'],
-        'Weight': TX.pet['Weight'],
+        res.slots.forEach(s => {
+          const card = document.createElement('div');
+          card.className = 'card';
+          
+          card.innerHTML = `
+            <div style="font-weight:700; font-size:1.05rem; margin-bottom:0.25rem;">${TX.type}</div>
+            <div style="margin-bottom:0.1rem;">${s.day} ${s.date}</div>
+            <div style="font-size:1.1rem; font-weight:600; margin-bottom:0.25rem;">${s.time}</div>
+            <div style="font-size:0.9rem; color:#444;">Grant: ${s.grant || 'None'}</div>
+            <div style="font-size:0.75rem; opacity:0.5; margin-top:0.4rem;">ID: ${s.id}</div>
+          `;
+          
+          card.onclick = () => {
+            TX.slot = s;
+            TX.isRogue = false;
+            nextStep('step-slots', 'step-search');
+          };
+          grid.appendChild(card);
+        });
+      }).apiGetAvailableSlots(TX.type, slotsCount);
+    } 
 
-        'Transportation Needed': transport,
-        'Notes': container.querySelector('#aNotes').value,
-        'Vet Office Name': container.querySelector('#aVet').value,
-        'Allergies or Sensitivities': container.querySelector('#aAllergy').value,
-        
-        'Vaccines Needed': [...container.querySelectorAll('input[name="vaccine"]:checked')].map(el => el.value).join(', '),
-        'Additional Services': [...container.querySelectorAll('input[name="service"]:checked')].map(el => el.value).join(', '),
-        'Previous Vet Records': container.querySelector('input[name="hasRec"]:checked')?.value || 'No'
-     };
+    // Slot Page Actions
+    container.querySelector('#showMoreBtn').onclick = () => { slotsCount += 6; loadSlots(); };
+    container.querySelector('#rogueBtn').onclick = () => {
+      TX.isRogue = true;
+      nextStep('step-slots', 'step-rogue');
+    };
 
-     if(TX.isRogue) {
-        payload['Date'] = TX.rogueData.date;
-        payload['Time'] = TX.rogueData.time;
-        payload['AM or PM'] = TX.rogueData.ampm;
-        payload['Appointment Type'] = TX.type;
-        payload['Scheduled By'] = TX.scheduler;
-        
-        google.script.run.withSuccessHandler(finish).apiCreateRogueAppointment(payload);
-     } else {
-        google.script.run.withSuccessHandler(finish).apiBookAppointment(
-           payload, TX.type, TX.slot.date, TX.slot.time, TX.slot.id, TX.scheduler
-        );
-     }
-  }
-
-  function finish() {
-     container.querySelector('#step-loading').classList.add('hidden');
-     container.innerHTML = `
-        <div style="text-align:center; padding:2rem;">
-           <h2>Success!</h2>
-           <p>Appointment booked successfully.</p>
-           <div class="actions">
-             <button class="btn" id="btnBookNext">Book Another for this Client</button>
-             <button class="btn secondary" onclick="window.location.reload()">Return Home</button>
-           </div>
+    // --- Rogue Logic ---
+    container.querySelector('#rNext').onclick = () => {
+      const d = container.querySelector('#rDate').value;
+      const t = container.querySelector('#rTime').value;
+      if(!d || !t) return alert('Date/Time required');
+      
+      const warnModal = document.createElement('div');
+      warnModal.className = 'modal';
+      warnModal.innerHTML = `
+        <div class="modal-content" style="border-top: 6px solid #dc2626;">
+          <h2 style="color:#b91c1c;">⚠️ Exception Warning</h2>
+          <p>By scheduling this appointment a new slot will be created as a one-time exception for this client.</p>
+          <p><strong>Please only continue if Lipsey or the Infirmary has already approved this date/time.</strong></p>
+          <div class="actions">
+            <button id="rogueConfirm" class="btn" style="background:#dc2626;">I Understand, Create It</button>
+            <button id="rogueCancel" class="btn secondary">Cancel</button>
+          </div>
         </div>
-     `;
-     
-     container.querySelector('#btnBookNext').onclick = () => {
-        // Reset for next booking
-        TX.slot = null;
-        TX.isRogue = false;
-        TX.pet = null; 
-        
-        // Return to type/slot, but skip search since owner is loaded
-        nextStep('step-loading', 'step-type');
-        
-        // We override the flow so after Slot selection, it jumps to Pet Modal
-        // This requires a slight tweak to the Slot click handler in Step 2:
-        // We can just add a check: if(TX.owner) showPetModal();
-     };
-  }
+      `;
+      document.body.appendChild(warnModal);
 
-  // Helper
-  function nextStep(curr, next) {
-    container.querySelector('#'+curr).classList.add('hidden');
-    container.querySelector('#'+next).classList.remove('hidden');
-    window.scrollTo({top:0, behavior:'smooth'});
-  }
-}
+      warnModal.querySelector('#rogueCancel').onclick = () => warnModal.remove();
+      warnModal.querySelector('#rogueConfirm').onclick = () => {
+         warnModal.remove();
+         TX.rogueData = { date: d, time: t, ampm: container.querySelector('#rAmPm').value };
+         nextStep('step-rogue', 'step-search');
+      };
+    };
+
+    // --- Step 3: Client Search ---
+    const qSearch = container.querySelector('#qSearch');
+    const sRes = container.querySelector('#searchResults');
+    
+    container.querySelector('#btnSearch').onclick = () => {
+      sRes.innerHTML = '<div class="spinner"></div>';
+      google.script.run.withSuccessHandler(matches => {
+        sRes.innerHTML = '';
+        if(!matches.length) { 
+            sRes.innerHTML = '<p>No matches found.</p>'; 
+            return; 
+        }
+        
+        if(matches.length === 1) {
+            TX.owner = matches[0];
+            populateOwnerForm(matches[0]);
+            nextStep('step-search', 'step-owner');
+            return;
+        }
+
+        matches.forEach(m => {
+          const row = document.createElement('div');
+          row.className = 'card';
+          row.style.marginBottom = '0.5rem';
+          row.style.cursor = 'pointer';
+          row.innerHTML = `<strong>${m.firstName} ${m.lastName}</strong><br>${m.phone}<br>${m.email}<br><small>${m.ownerId}</small>`;
+          row.onclick = () => {
+            TX.owner = m;
+            populateOwnerForm(m);
+            nextStep('step-search', 'step-owner');
+          };
+          sRes.appendChild(row);
+        });
+      }).apiSearchOwners(qSearch.value);
+    };
+
+    container.querySelector('#btnNewClient').onclick = () => {
+      TX.owner = null; 
+      populateOwnerForm({}); 
+      nextStep('step-search', 'step-owner');
+    };
+
+    // --- Step 4: Owner Form ---
+    function populateOwnerForm(data) {
+      const ids = ['oFirst','oLast','oPhone','oEmail','oAddress','oCity','oState','oZip','ownerId'];
+      ids.forEach(id => container.querySelector('#'+id).value = '');
+      
+      if(data.firstName) container.querySelector('#oFirst').value = data.firstName;
+      if(data.lastName) container.querySelector('#oLast').value = data.lastName;
+      if(data.phone) container.querySelector('#oPhone').value = data.phone;
+      if(data.email) container.querySelector('#oEmail').value = data.email;
+      if(data.address) container.querySelector('#oAddress').value = data.address;
+      if(data.city) container.querySelector('#oCity').value = data.city;
+      if(data.state) container.querySelector('#oState').value = data.state;
+      if(data.zip) container.querySelector('#oZip').value = data.zip;
+      if(data.ownerId) container.querySelector('#ownerId').value = data.ownerId;
+    }
+
+    const pInput = container.querySelector('#oPhone');
+    pInput.addEventListener('blur', () => {
+        const digits = pInput.value.replace(/\D/g, '');
+        if (digits.length === 10) {
+          pInput.value = `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
+        }
+    });
+
+    container.querySelector('#btnSaveOwner').onclick = () => {
+      const payload = {
+        'Owner ID': container.querySelector('#ownerId').value,
+        'First Name': container.querySelector('#oFirst').value,
+        'Last Name': container.querySelector('#oLast').value,
+        'Phone': container.querySelector('#oPhone').value,
+        'Email': container.querySelector('#oEmail').value,
+        'Street Address': container.querySelector('#oAddress').value,
+        'City': container.querySelector('#oCity').value,
+        'State': container.querySelector('#oState').value,
+        'Zip Code': container.querySelector('#oZip').value
+      };
+      
+      const btn = container.querySelector('#btnSaveOwner');
+      btn.textContent = 'Saving...';
+      btn.disabled = true;
+
+      google.script.run.withSuccessHandler(id => {
+        btn.textContent = 'Save & Select Pet';
+        btn.disabled = false;
+        TX.owner = { ...payload, ownerId: id };
+        showPetModal(id);
+      }).apiUpsertOwner(payload, TX.scheduler);
+    };
+
+    // --- Step 5: Pet Modal ---
+    function showPetModal(ownerId) {
+      const modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.innerHTML = `
+        <div class="modal-content" style="max-width:600px;">
+          <h2>Select Pet</h2>
+          <div id="petList" class="card-grid"></div>
+          <div class="actions">
+            <button id="btnAddPet" class="btn secondary">+ Add New Pet</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      
+      const list = modal.querySelector('#petList');
+      list.innerHTML = '<div class="spinner"></div>';
+
+      google.script.run.withSuccessHandler(pets => {
+        list.innerHTML = '';
+        if(!pets.length) list.innerHTML = '<p>No active pets found.</p>';
+        
+        pets.forEach(p => {
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.innerHTML = `
+            <strong>${p.name}</strong> (${p.species})<br>${p.breed}<br>
+            <div style="margin-top:0.5rem; border-top:1px solid #eee; padding-top:0.5rem;">
+               <button class="btn-sm-status" style="font-size:0.8rem; background:none; border:none; color:blue; cursor:pointer;">Update Status</button>
+            </div>
+            <div class="status-edit hidden" style="margin-top:0.5rem; background:#f9fafb; padding:4px;">
+               <select class="pStat"><option>Rehomed</option><option>Deceased</option></select>
+               <input class="pNote" placeholder="Note (e.g. date passed)" style="width:90%; margin-top:4px;">
+               <button class="btn-save-stat btn tertiary" style="font-size:0.8rem; margin-top:4px;">Save</button>
+            </div>
+          `;
+          
+          card.addEventListener('click', (e) => {
+             if(e.target.closest('.status-edit') || e.target.classList.contains('btn-sm-status')) return;
+             TX.pet = p;
+             modal.remove();
+             populatePetForm(p);
+             nextStep('step-owner', 'step-pet');
+          });
+
+          const statBtn = card.querySelector('.btn-sm-status');
+          const statPanel = card.querySelector('.status-edit');
+          const saveStat = card.querySelector('.btn-save-stat');
+          
+          statBtn.onclick = (e) => { e.stopPropagation(); statPanel.classList.toggle('hidden'); };
+          
+          saveStat.onclick = (e) => {
+             e.stopPropagation();
+             const newStat = card.querySelector('.pStat').value;
+             const note = card.querySelector('.pNote').value;
+             saveStat.textContent = '...';
+             google.script.run.withSuccessHandler(() => {
+                card.style.opacity = '0.5';
+                card.innerHTML = `<em style="color:red;">Marked as ${newStat}</em>`;
+             }).apiUpdatePetStatus(p.petId, newStat, note, TX.scheduler);
+          };
+
+          list.appendChild(card);
+        });
+      }).apiGetOwnerPets(ownerId);
+
+      modal.querySelector('#btnAddPet').onclick = () => {
+         TX.pet = null;
+         modal.remove();
+         populatePetForm({});
+         nextStep('step-owner', 'step-pet');
+      };
+    }
+
+    // --- Step 6: Pet Form ---
+    function populatePetForm(p) {
+      const ids = ['petId','pName','pSpecies','pBreed1','pBreed2','pColor','pPattern','pSex','pFixed','pAge','pWeight'];
+      ids.forEach(id => container.querySelector('#'+id).value = '');
+      
+      if(p.petId) container.querySelector('#petId').value = p.petId;
+      if(p.name) container.querySelector('#pName').value = p.name;
+      if(p.species) container.querySelector('#pSpecies').value = p.species;
+      if(p.breed) container.querySelector('#pBreed1').value = p.breed;
+      if(p.color) container.querySelector('#pColor').value = p.color;
+      if(p.age) container.querySelector('#pAge').value = p.age;
+      if(p.sex) container.querySelector('#pSex').value = p.sex;
+      if(p.fixed) container.querySelector('#pFixed').value = p.fixed;
+    }
+
+    container.querySelector('#btnSavePet').onclick = () => {
+      const payload = {
+        'Pet ID': container.querySelector('#petId').value,
+        'Owner ID': TX.owner.ownerId,
+        'Pet Name': container.querySelector('#pName').value,
+        'Species': container.querySelector('#pSpecies').value,
+        'Primary Breed': container.querySelector('#pBreed1').value,
+        'Secondary Breed': container.querySelector('#pBreed2').value,
+        'Color': container.querySelector('#pColor').value,
+        'Color Pattern': container.querySelector('#pPattern').value,
+        'Sex': container.querySelector('#pSex').value,
+        'Altered': container.querySelector('#pFixed').value,
+        'Age': container.querySelector('#pAge').value,
+        'Weight': container.querySelector('#pWeight').value
+      };
+
+      const btn = container.querySelector('#btnSavePet');
+      btn.textContent = 'Saving...';
+      btn.disabled = true;
+
+      google.script.run.withSuccessHandler(id => {
+         TX.pet = { ...payload, petId: id };
+         prepDetails();
+         nextStep('step-pet', 'step-details');
+      }).apiUpsertPet(payload, TX.scheduler);
+    };
+
+    // --- Step 7: Appt Details ---
+    function prepDetails() {
+      container.querySelector('#dispType').textContent = TX.type;
+      if(TX.isRogue) {
+         container.querySelector('#dispSlot').textContent = `EXCEPTION: ${TX.rogueData.date} @ ${TX.rogueData.time}`;
+      } else {
+         container.querySelector('#dispSlot').textContent = `${TX.slot.day} ${TX.slot.date} @ ${TX.slot.time}`;
+      }
+      container.querySelector('#dispOwner').textContent = TX.owner['First Name'] + ' ' + TX.owner['Last Name'];
+      container.querySelector('#dispPet').textContent = TX.pet['Pet Name'];
+
+      const species = TX.pet['Species'];
+      const vacList = container.querySelector('#vaccines');
+      const svcList = container.querySelector('#services');
+      
+      google.script.run.withSuccessHandler(res => {
+         const lists = { canine: res.canine, feline: res.feline };
+         const opts = (species === 'Canine') ? lists.canine : (species === 'Feline' ? lists.feline : []);
+         vacList.innerHTML = opts.length 
+           ? opts.map(v => `<label class="radio-option"><input type="checkbox" name="vaccine" value="${v}"> ${v}</label>`).join('')
+           : '<p>No vaccines available</p>';
+      }).apiGetVaccineLists();
+
+      google.script.run.withSuccessHandler(res => {
+         svcList.innerHTML = res.services.map(s => 
+           `<label class="radio-option"><input type="checkbox" name="service" value="${s}"> ${s}</label>`).join('');
+      }).apiGetAdditionalServices();
+    }
+
+    container.querySelector('#btnFinalize').onclick = () => {
+       showTransportModal();
+    };
+
+    // ─── TRANSPORT MODAL ─────────────────────────────────
+    function showTransportModal() {
+      const hasVetRecords = container.querySelector('input[name="hasRec"]:checked')?.value === 'Yes';
+      const modal = document.createElement('div');
+      modal.className = 'modal';
+
+      let inner = `
+        <div class="modal-content">
+          <p>Does this client require transportation assistance?</p>
+          <div class="actions transport-actions">
+            <button class="btn transportBtn" data-val="Yes">Yes</button>
+            <button class="btn transportBtn" data-val="No">No</button>
+          </div>
+          <hr class="divider">
+          ${hasVetRecords ? `
+            <p>You indicated the client has previous veterinary records. Please upload, send request, or remind.</p>
+            <div class="actions">
+              <input type="file" id="recordsUpload" multiple style="display:none;">
+              <button id="uploadBtn" class="btn" disabled>Upload</button>
+              <button id="sendRequestBtn" class="btn secondary" disabled>Request</button>
+              <button id="remindLaterBtn" class="btn tertiary" disabled>Remind</button>
+            </div>
+            <div id="uploadList" class="upload-list"></div>
+            <div id="modalToast"></div>
+          ` : ``}
+        </div>
+      `;
+      modal.innerHTML = inner;
+      document.body.appendChild(modal);
+
+      const toast = (msg, k) => { 
+          const t = modal.querySelector('#modalToast'); 
+          if(t) { t.textContent = msg; t.className = k==='error'?'error':'success-message'; }
+      };
+
+      let transport = null;
+      modal.querySelectorAll('.transportBtn').forEach(b => {
+         b.onclick = () => {
+            modal.querySelectorAll('.transportBtn').forEach(x => x.classList.remove('selected'));
+            b.classList.add('selected');
+            transport = b.dataset.val;
+            if(!hasVetRecords) {
+               modal.remove();
+               doBook(transport);
+            } else {
+               modal.querySelectorAll('.btn').forEach(x => x.removeAttribute('disabled'));
+            }
+         };
+      });
+
+      if(hasVetRecords) {
+          // Upload
+          modal.querySelector('#uploadBtn').onclick = () => {
+              const input = modal.querySelector('#recordsUpload');
+              input.click();
+              input.onchange = () => {
+                 const files = [...input.files];
+                 if(!files.length) return;
+                 
+                 google.script.run.withSuccessHandler(res => {
+                    if(!res.ok) return toast('Folder error', 'error');
+                    let done = 0;
+                    files.forEach(f => {
+                       const reader = new FileReader();
+                       reader.onload = e => {
+                          const b64 = e.target.result.split(',')[1];
+                          google.script.run.withSuccessHandler(() => {
+                             done++;
+                             if(done === files.length) {
+                                toast('Uploaded!', 'success');
+                                setTimeout(() => { modal.remove(); doBook(transport); }, 1000);
+                             }
+                          }).apiUploadVetRecord(f.name, b64, res.folderId);
+                       };
+                       reader.readAsDataURL(f);
+                    });
+                 }).apiCreateVetRecordsFolder(TX.owner['First Name'], TX.owner['Last Name'], TX.pet['Pet Name'], TX.owner['Email']);
+              };
+          };
+
+          // Request
+          modal.querySelector('#sendRequestBtn').onclick = () => {
+             const btn = modal.querySelector('#sendRequestBtn');
+             btn.textContent = 'Sending...';
+             google.script.run.withSuccessHandler(res => {
+                if(res.ok) {
+                   toast('Sent!', 'success');
+                   setTimeout(() => { modal.remove(); doBook(transport); }, 1000);
+                } else toast('Error sending', 'error');
+             }).apiSendVetRecordsRequest(TX.owner['Email'], '', TX.owner['First Name'], TX.pet['Pet Name']);
+          };
+
+          // Remind
+          modal.querySelector('#remindLaterBtn').onclick = () => {
+             const btn = modal.querySelector('#remindLaterBtn');
+             btn.textContent = 'Sending...';
+             const card = `${TX.slot ? TX.slot.date : TX.rogueData.date}`;
+             google.script.run.withSuccessHandler(res => {
+                if(res.ok) {
+                   toast('Reminder set!', 'success');
+                   setTimeout(() => { modal.remove(); doBook(transport); }, 1000);
+                }
+             }).apiSendVetRecordReminder(TX.scheduler, TX.pet['Pet Name'], card);
+          };
+      }
+    }
+
+    // ─── BOOKING ─────────────────────────────────────────
+    function doBook(transport) {
+       const loading = container.querySelector('#step-loading');
+       const details = container.querySelector('#step-details');
+       details.classList.add('hidden');
+       loading.classList.remove('hidden');
+
+       const payload = {
+          'Owner ID': TX.owner.ownerId,
+          'Pet ID': TX.pet.petId,
+          'First Name': TX.owner['First Name'],
+          'Last Name': TX.owner['Last Name'],
+          'Phone Number': TX.owner['Phone'],
+          'Email': TX.owner['Email'],
+          'Address': TX.owner['Street Address'], 
+          'Street Address': TX.owner['Street Address'],
+          'City': TX.owner['City'],
+          'State': TX.owner['State'],
+          'Zip Code': TX.owner['Zip Code'],
+          
+          'Pet Name': TX.pet['Pet Name'],
+          'Species': TX.pet['Species'],
+          'Breed One': TX.pet['Primary Breed'],
+          'Breed Two': TX.pet['Secondary Breed'],
+          'Color': TX.pet['Color'],
+          'Color Pattern': TX.pet['Color Pattern'],
+          'Sex': TX.pet['Sex'],
+          'Spayed or Neutered': TX.pet['Altered'],
+          'Age': TX.pet['Age'],
+          'Weight': TX.pet['Weight'],
+
+          'Transportation Needed': transport,
+          'Notes': container.querySelector('#aNotes').value,
+          'Vet Office Name': container.querySelector('#aVet').value,
+          'Allergies or Sensitivities': container.querySelector('#aAllergy').value,
+          
+          'Vaccines Needed': [...container.querySelectorAll('input[name="vaccine"]:checked')].map(el => el.value).join(', '),
+          'Additional Services': [...container.querySelectorAll('input[name="service"]:checked')].map(el => el.value).join(', '),
+          'Previous Vet Records': container.querySelector('input[name="hasRec"]:checked')?.value || 'No'
+       };
+
+       if(TX.isRogue) {
+          payload['Date'] = TX.rogueData.date;
+          payload['Time'] = TX.rogueData.time;
+          payload['AM or PM'] = TX.rogueData.ampm;
+          payload['Appointment Type'] = TX.type;
+          payload['Scheduled By'] = TX.scheduler;
+          
+          google.script.run.withSuccessHandler(finish).apiCreateRogueAppointment(payload);
+       } else {
+          google.script.run.withSuccessHandler(finish).apiBookAppointment(
+             payload, TX.type, TX.slot.date, TX.slot.time, TX.slot.id, TX.scheduler
+          );
+       }
+    }
+
+    function finish() {
+       container.querySelector('#step-loading').classList.add('hidden');
+       container.innerHTML = `
+          <div style="text-align:center; padding:2rem;">
+             <h2>Success!</h2>
+             <p>Appointment booked successfully.</p>
+             <div class="actions">
+               <button class="btn" id="btnBookNext">Book Another for this Client</button>
+               <button class="btn secondary" onclick="window.location.reload()">Return Home</button>
+             </div>
+          </div>
+       `;
+       
+       container.querySelector('#btnBookNext').onclick = () => {
+          TX.slot = null;
+          TX.isRogue = false;
+          TX.pet = null; 
+          nextStep('step-loading', 'step-type');
+       };
+    }
+
+    // Helper
+    function nextStep(curr, next) {
+      container.querySelector('#'+curr).classList.add('hidden');
+      container.querySelector('#'+next).classList.remove('hidden');
+      window.scrollTo({top:0, behavior:'smooth'});
+    }
+  };
+})();
 </script>
