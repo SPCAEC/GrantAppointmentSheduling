@@ -36,17 +36,17 @@
     `;
 
     const results = container.querySelector('#cResults');
-    const searchBtn = container.querySelector('#cSearchBtn'); // Define button variable
+    // 🔹 FIX: Define searchBtn immediately so it's available for the Enter key listener
+    const searchBtn = container.querySelector('#cSearchBtn');
 
     // ─── NEW: Trigger Search on Enter ───
-    const inputs = container.querySelectorAll('input'); // Selects cDate, cClient, cPet
-    inputs.forEach(input => {
+    container.querySelectorAll('input').forEach(input => {
       input.addEventListener('keyup', (e) => {
         if (e.key === 'Enter') searchBtn.click();
       });
     });
-    // ────────────────────────────────────
 
+    // ─── Search Button Logic ───
     searchBtn.addEventListener('click', () => {
       results.innerHTML = `<div class="spinner"></div>`;
       google.script.run
@@ -64,6 +64,7 @@
         });
     });
 
+    // ─── Clear Button Logic ───
     container.querySelector('#cClearBtn').addEventListener('click', () => {
       container.querySelector('#cDate').value = '';
       container.querySelector('#cClient').value = '';

@@ -43,10 +43,10 @@
     const results = container.querySelector('#oResults');
     const dateInput = container.querySelector('#oDate');
     const datePicker = container.querySelector('#oDatePicker');
+    // 🔹 Defined here so it is available for the Enter key listener
     const searchBtn = container.querySelector('#oSearchBtn');
 
-    // ─── NEW: Trigger Search on Enter ───
-    // We select all text inputs in this specific container to catch Date, Client, and Pet
+    // ─── Trigger Search on Enter ───
     container.querySelectorAll('input[type="text"]').forEach(input => {
       input.addEventListener('keyup', (e) => {
         if (e.key === 'Enter') searchBtn.click();
@@ -58,21 +58,20 @@
     // A. Sync Picker -> Text
     datePicker.addEventListener('change', () => {
       if (datePicker.value) {
-        // Picker returns YYYY-MM-DD, we need MM/DD/YYYY
         const [y, m, d] = datePicker.value.split('-');
         dateInput.value = `${m}/${d}/${y}`;
       }
     });
 
-    // B. Typing Logic (12082025 -> 12/08/2025)
+    // B. Typing Logic
     dateInput.addEventListener('input', (e) => {
-      let v = e.target.value.replace(/\D/g, ''); // strip non-digits
+      let v = e.target.value.replace(/\D/g, ''); 
       if (v.length >= 5) v = `${v.slice(0,2)}/${v.slice(2,4)}/${v.slice(4,8)}`;
       else if (v.length >= 3) v = `${v.slice(0,2)}/${v.slice(2)}`;
       e.target.value = v;
     });
 
-    // C. Pad Logic on Blur (1/1/25 -> 01/01/2025)
+    // C. Pad Logic on Blur
     const normalizeDate = () => {
       const raw = dateInput.value.trim();
       if (!raw) return;
@@ -81,14 +80,9 @@
         let m = parts[0];
         let d = parts[1];
         let y = parts[2];
-        
-        // Pad Single Digits
         if (m.length === 1) m = '0' + m;
         if (d.length === 1) d = '0' + d;
-        
-        // Handle Short Year (25 -> 2025)
         if (y.length === 2) y = '20' + y;
-        
         dateInput.value = `${m}/${d}/${y}`;
       }
     };
@@ -98,7 +92,7 @@
 
     // ─── 2. Search Action ───
     searchBtn.addEventListener('click', () => {
-      normalizeDate(); // Ensure format is perfect before sending
+      normalizeDate(); 
       
       results.innerHTML = `<div class="spinner"></div>`;
       google.script.run

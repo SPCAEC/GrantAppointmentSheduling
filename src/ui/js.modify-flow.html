@@ -16,7 +16,7 @@
 
   // ———————————————————————————————————
   // Search Screen
-    function renderSearch(container) {
+  function renderSearch(container) {
     container.innerHTML = `
         <div class="schedule-step">
         <h2>Find an Appointment to Modify</h2>
@@ -46,6 +46,8 @@
     const mClient = container.querySelector('#mClient');
     const mPet = container.querySelector('#mPet');
     const results = container.querySelector('#mResults');
+    // 🔹 FIX: Defined searchBtn here so it can be used below
+    const searchBtn = container.querySelector('#mSearchBtn'); 
 
     // ─── NEW: Trigger Search on Enter ───
     [mDate, mClient, mPet].forEach(input => {
@@ -53,7 +55,6 @@
         if (e.key === 'Enter') searchBtn.click();
       });
     });
-
 
     // ─── Search Button Listener ───
     searchBtn.addEventListener('click', () => {
@@ -97,7 +98,7 @@
         results.innerHTML = '';
         window.scrollTo({ top: 0, behavior: 'smooth' });
     });
-    }
+  }
 
   // ———————————————————————————————————
   // Results list (cards)
