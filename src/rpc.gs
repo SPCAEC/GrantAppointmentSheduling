@@ -632,3 +632,11 @@ function apiCancelAppointment(appointmentId, reason, cancelledBy) {
     return { ok: false, error: err.message };
   }
 }
+
+function apiUpsertOwner(payload, user) {
+  return rpcTry(() => upsertOwnerInDb_(payload, user));
+}
+
+function apiUpsertPet(payload, user) {
+  return rpcTry(() => upsertPetInDb_(payload, user));
+}

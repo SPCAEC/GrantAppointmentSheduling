@@ -14,6 +14,16 @@ const CFG = {
     CHANGE_ALERT: 'APPOINTMENT_CHANGE_EMAIL' // property name storing notification recipients
   },
 
+  // NEW: Central DB
+  CENTRAL_DB_ID: '15oM9TY9MPOTxkLXkUl49Sl46Exju7ipZgIEIM14k8Ns',
+  CENTRAL_APPT_DB_ID: '1_ZI959RnnU7BQx8cJRz_WNbr8_xXOGV2qgUhtnhGKL4',
+  
+  TABS: {
+    OWNERS: 'Owners',
+    PETS: 'Pets',
+    APPT_LOG: 'Log' // Assuming tab name in History DB
+  },
+
   // ─── Column Header Mappings ─────────────────────────
   COLS: {
     ID: 'Appointment ID',               
@@ -30,6 +40,10 @@ const CFG = {
     APPT_OUTCOME: 'Appointment Outcome',
     APPT_NOTES: 'Appointment Notes', // Plain text for quick reading
     APPT_NOTES_FILE_ID: 'Outcome Notes File ID', // Link to the rich text
+    OWNER_ID: 'Owner ID',
+    PET_ID: 'Pet ID',
+    PET_STATUS: 'Pet Status',
+    STATUS_NOTE: 'Status Note',
 
     // ─── Client Info ───────────────────────────
     FIRST: 'First Name',
@@ -57,6 +71,7 @@ const CFG = {
 
     // ─── Optional Timestamp ────────────────────
     UPDATED_AT: 'Updated At'
+    LOGGED_AT: 'Logged At'
   },
 
   // ─── Helpers ────────────────────────────────────────
