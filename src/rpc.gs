@@ -633,6 +633,22 @@ function apiCancelAppointment(appointmentId, reason, cancelledBy) {
   }
 }
 
+/* ─────────────────────────────────────────────────────────────
+   CENTRAL DB CONNECTORS
+   ───────────────────────────────────────────────────────────── */
+
+function apiSearchOwners(query) {
+  return rpcTry(() => findOwnersInDb_(query));
+}
+
+function apiGetOwnerPets(ownerId) {
+  return rpcTry(() => getPetsByOwnerId_(ownerId));
+}
+
+function apiUpdatePetStatus(petId, status, note, user) {
+  return rpcTry(() => updatePetStatusInDb_(petId, status, note, user));
+}
+
 function apiUpsertOwner(payload, user) {
   return rpcTry(() => upsertOwnerInDb_(payload, user));
 }
