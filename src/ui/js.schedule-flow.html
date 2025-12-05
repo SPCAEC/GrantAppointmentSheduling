@@ -152,12 +152,17 @@ function renderScheduleFlow(container) {
 
   // --- Step 2: Slots ---
   let slotsCount = 6;
+
   function loadSlots() {
     const grid = container.querySelector('#slotGrid');
     grid.innerHTML = '<div class="spinner"></div>';
+    
     google.script.run.withSuccessHandler(res => {
       grid.innerHTML = '';
-      if(!res.ok || !res.slots.length) { grid.innerHTML = '<p>No slots available.</p>'; return; }
+      if(!res.ok || !res.slots.length) { 
+        grid.innerHTML = '<p>No slots available.</p>'; 
+        return; 
+      }
       
       res.slots.forEach(s => {
         const card = document.createElement('div');
@@ -180,8 +185,11 @@ function renderScheduleFlow(container) {
         grid.appendChild(card);
       });
     }).apiGetAvailableSlots(TX.type, slotsCount);
-  
+  } // <--- THIS CLOSING BRACE WAS MISSING
+
+  // These event listeners should be outside the function
   container.querySelector('#showMoreBtn').onclick = () => { slotsCount += 6; loadSlots(); };
+  
   container.querySelector('#rogueBtn').onclick = () => {
     TX.isRogue = true;
     setupRogueFormatters();
