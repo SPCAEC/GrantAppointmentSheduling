@@ -14,6 +14,7 @@
       rogueData: {},
       owner: null,
       pet: null,
+      originalOwnerState: null // Stores the initial state of the owner form
     };
 
     // ─── TEMPLATE ────────────────────────────────────────
@@ -64,16 +65,16 @@
         <h2>Confirm Owner Info</h2>
         <input type="hidden" id="ownerId">
         <div class="grid" style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
-          <div class="field"><label>First Name</label><input id="oFirst"></div>
-          <div class="field"><label>Last Name</label><input id="oLast"></div>
+          <div class="field"><label>First Name <span style="color:red">*</span></label><input id="oFirst"></div>
+          <div class="field"><label>Last Name <span style="color:red">*</span></label><input id="oLast"></div>
         </div>
-        <div class="field"><label>Phone</label><input id="oPhone"></div>
-        <div class="field"><label>Email</label><input id="oEmail"></div>
-        <div class="field"><label>Address</label><input id="oAddress"></div>
+        <div class="field"><label>Phone <span style="color:red">*</span></label><input id="oPhone"></div>
+        <div class="field"><label>Email <span style="color:red">*</span></label><input id="oEmail"></div>
+        <div class="field"><label>Address <span style="color:red">*</span></label><input id="oAddress"></div>
         <div class="grid" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.5rem;">
-          <div class="field"><label>City</label><input id="oCity"></div>
-          <div class="field"><label>State</label><input id="oState"></div>
-          <div class="field"><label>Zip</label><input id="oZip"></div>
+          <div class="field"><label>City <span style="color:red">*</span></label><input id="oCity"></div>
+          <div class="field"><label>State <span style="color:red">*</span></label><input id="oState"></div>
+          <div class="field"><label>Zip <span style="color:red">*</span></label><input id="oZip"></div>
         </div>
         <div class="actions">
           <button id="btnSaveOwner" class="btn">Save & Select Pet</button>
@@ -248,59 +249,58 @@
     };
 
     // --- Step 3: Client Search ---
-  const qSearch = container.querySelector('#qSearch');
-  const sRes = container.querySelector('#searchResults');
-  const btnSearch = container.querySelector('#btnSearch');
+    const qSearch = container.querySelector('#qSearch');
+    const sRes = container.querySelector('#searchResults');
+    const btnSearch = container.querySelector('#btnSearch');
 
-  // ─── NEW: Trigger Search on Enter ───
-  qSearch.addEventListener('keyup', (e) => {
-    if (e.key === 'Enter') btnSearch.click();
-  });
+    // Trigger Search on Enter
+    qSearch.addEventListener('keyup', (e) => {
+      if (e.key === 'Enter') btnSearch.click();
+    });
 
-  btnSearch.onclick = () => {
-    sRes.innerHTML = '<div class="spinner"></div>';
-    google.script.run.withSuccessHandler(matches => {
-      sRes.innerHTML = '';
-      if(!matches.length) { 
-          sRes.innerHTML = '<p>No matches found.</p>'; 
-          return; 
-      }
-      
-      // Auto-skip if 1 match
-      if(matches.length === 1) {
-          TX.owner = matches[0];
-          populateOwnerForm(matches[0]);
-          nextStep('step-search', 'step-owner');
-          return;
-      }
+    btnSearch.onclick = () => {
+      sRes.innerHTML = '<div class="spinner"></div>';
+      google.script.run.withSuccessHandler(matches => {
+        sRes.innerHTML = '';
+        if(!matches.length) { 
+            sRes.innerHTML = '<p>No matches found.</p>'; 
+            return; 
+        }
+        
+        // Auto-skip if 1 match
+        if(matches.length === 1) {
+            TX.owner = matches[0];
+            populateOwnerForm(matches[0]);
+            nextStep('step-search', 'step-owner');
+            return;
+        }
 
-      matches.forEach(m => {
-        const row = document.createElement('div');
-        row.className = 'card';
-        row.style.marginBottom = '0.5rem';
-        row.style.cursor = 'pointer';
-        row.innerHTML = `<strong>${m.firstName} ${m.lastName}</strong><br>${m.phone}<br>${m.email}<br><small>${m.ownerId}</small>`;
-        row.onclick = () => {
-          TX.owner = m;
-          populateOwnerForm(m);
-          nextStep('step-search', 'step-owner');
-        };
-        sRes.appendChild(row);
-      });
-    }).apiSearchOwners(qSearch.value);
-  };
+        matches.forEach(m => {
+          const row = document.createElement('div');
+          row.className = 'card';
+          row.style.marginBottom = '0.5rem';
+          row.style.cursor = 'pointer';
+          row.innerHTML = `<strong>${m.firstName} ${m.lastName}</strong><br>${m.phone}<br>${m.email}<br><small>${m.ownerId}</small>`;
+          row.onclick = () => {
+            TX.owner = m;
+            populateOwnerForm(m);
+            nextStep('step-search', 'step-owner');
+          };
+          sRes.appendChild(row);
+        });
+      }).apiSearchOwners(qSearch.value);
+    };
 
-  container.querySelector('#btnNewClient').onclick = () => {
-    TX.owner = null; // New
-    populateOwnerForm({}); 
-    nextStep('step-search', 'step-owner');
-  };
+    container.querySelector('#btnNewClient').onclick = () => {
+      TX.owner = null; // New
+      populateOwnerForm({}); 
+      nextStep('step-search', 'step-owner');
+    };
 
-    // --- Step 4: Owner Form ---
-    // Helper to gather form data
+    // --- Step 4: Owner Form Helpers ---
     function getOwnerFormData() {
       return {
-        'Owner ID': container.querySelector('#ownerId').value, // Hidden ID
+        'Owner ID': container.querySelector('#ownerId').value,
         'First Name': container.querySelector('#oFirst').value.trim(),
         'Last Name': container.querySelector('#oLast').value.trim(),
         'Phone': container.querySelector('#oPhone').value.trim(),
@@ -311,13 +311,13 @@
         'Zip Code': container.querySelector('#oZip').value.trim()
       };
     }
-    // --- Step 4: Owner Form ---
+
     function populateOwnerForm(data) {
-      // Clear fields first
+      // Clear fields
       const ids = ['oFirst','oLast','oPhone','oEmail','oAddress','oCity','oState','oZip','ownerId'];
       ids.forEach(id => container.querySelector('#'+id).value = '');
       
-      // Populate if data exists
+      // Populate fields
       if(data.firstName) container.querySelector('#oFirst').value = data.firstName;
       if(data.lastName) container.querySelector('#oLast').value = data.lastName;
       if(data.phone) container.querySelector('#oPhone').value = data.phone;
@@ -328,10 +328,11 @@
       if(data.zip) container.querySelector('#oZip').value = data.zip;
       if(data.ownerId) container.querySelector('#ownerId').value = data.ownerId;
 
-      // 🔹 NEW: Take a snapshot of the initial state for comparison later
+      // 🔹 Snapshot the initial state so we know if it changes
       TX.originalOwnerState = JSON.stringify(getOwnerFormData());
     }
 
+    // Phone Formatting
     const pInput = container.querySelector('#oPhone');
     pInput.addEventListener('blur', () => {
         const digits = pInput.value.replace(/\D/g, '');
@@ -340,10 +341,11 @@
         }
     });
 
+    // Save Button Logic
     container.querySelector('#btnSaveOwner').onclick = () => {
       const payload = getOwnerFormData();
 
-      // 1. Strict Validation: All fields required
+      // 1. Strict Validation: Check required fields
       const requiredFields = ['First Name', 'Last Name', 'Phone', 'Email', 'Street Address', 'City', 'State', 'Zip Code'];
       const missing = requiredFields.filter(field => !payload[field]);
       
@@ -352,19 +354,18 @@
         return;
       }
       
-      // 2. Dirty Check: Did anything change?
-      // If we have an ID (existing client) AND the data matches our snapshot, skip the save.
+      // 2. Dirty Check: Skip save if nothing changed (prevents duplicates)
       const currentJson = JSON.stringify(payload);
-      
-      if (payload['Owner ID'] && currentJson === TX.originalOwnerState) {
-        console.log('No changes detected. Skipping save to prevent duplicates.');
-        // Proceed to next step using existing ID
-        TX.owner = { ...payload, ownerId: payload['Owner ID'] }; 
+      const isExistingClient = !!payload['Owner ID'];
+
+      if (isExistingClient && currentJson === TX.originalOwnerState) {
+        console.log('No changes detected. Skipping backend save.');
+        TX.owner = { ...payload, ownerId: payload['Owner ID'] };
         showPetModal(payload['Owner ID']);
         return;
       }
 
-      // 3. Save Changes (or create new)
+      // 3. Save Changes (only if dirty or new)
       const btn = container.querySelector('#btnSaveOwner');
       btn.textContent = 'Saving...';
       btn.disabled = true;
@@ -373,12 +374,10 @@
         btn.textContent = 'Save & Select Pet';
         btn.disabled = false;
         
-        // Update hidden ID (crucial for new clients effectively becoming "existing" immediately)
+        // Update state with new ID
         container.querySelector('#ownerId').value = id;
         payload['Owner ID'] = id;
-        
-        // Update snapshot so subsequent clicks don't re-save unless modified again
-        TX.originalOwnerState = JSON.stringify(payload);
+        TX.originalOwnerState = JSON.stringify(payload); // Update snapshot
         
         TX.owner = { ...payload, ownerId: id };
         showPetModal(id);
