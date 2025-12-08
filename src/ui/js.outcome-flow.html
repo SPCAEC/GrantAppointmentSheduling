@@ -10,6 +10,11 @@
 
   // ─── SEARCH SCREEN ─────────────────────────────────────
   function renderSearch(container) {
+    // 🔹 NAV FIX: Ensure Back button goes to Main Menu from here
+    if (window.SPCA && window.SPCA.setBackHandler) {
+        window.SPCA.setBackHandler(null);
+    }
+
     container.innerHTML = `
       <div class="schedule-step">
         <h2>Find Appointment</h2>
@@ -43,7 +48,6 @@
     const results = container.querySelector('#oResults');
     const dateInput = container.querySelector('#oDate');
     const datePicker = container.querySelector('#oDatePicker');
-    // 🔹 Defined here so it is available for the Enter key listener
     const searchBtn = container.querySelector('#oSearchBtn');
 
     // ─── Trigger Search on Enter ───
@@ -160,6 +164,11 @@
 
   // ─── OUTCOME FORM ──────────────────────────────────────
   function renderOutcomeForm(container, row) {
+    // 🔹 NAV FIX: Intercept "Back" to return to Search
+    if (window.SPCA && window.SPCA.setBackHandler) {
+        window.SPCA.setBackHandler(() => renderSearch(container));
+    }
+
     const isAvailable = (row.status === 'Available');
     const displayTitle = isAvailable ? `Block Off Slot` : `Appointment Outcome`;
 
@@ -322,7 +331,7 @@
     });
 
     container.querySelector('#cancelOutcome').addEventListener('click', () => {
-       renderOutcomeFlow(container);
+       renderSearch(container); // Go back to Search
     });
   }
 

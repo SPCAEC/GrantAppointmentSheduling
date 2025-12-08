@@ -2,7 +2,6 @@
 (function() {
   const { backBtn, sectionTitle } = window.SPCA || {};
 
-  // 1. Accept preloadedOwner argument to persist client data on "Book Next"
   window.renderScheduleFlow = function(container, preloadedOwner = null) {
     if(sectionTitle) sectionTitle.textContent = 'Schedule New Appointment';
 
@@ -13,13 +12,43 @@
       slot: null,
       isRogue: false,
       rogueData: {},
-      owner: preloadedOwner, // Initialize with passed owner if exists
+      owner: preloadedOwner,
       pet: null,
       originalOwnerState: null
     };
 
+    // ─── HISTORY STACK FOR NAVIGATION ────────────────────
+    const stepHistory = [];
+
+    // Custom function to handle forward/backward movement
+    function nextStep(currentId, nextId) {
+      // 1. Hide Current, Show Next
+      container.querySelector('#'+currentId).classList.add('hidden');
+      container.querySelector('#'+nextId).classList.remove('hidden');
+      window.scrollTo({top:0, behavior:'smooth'});
+
+      // 2. Push current to history
+      stepHistory.push(currentId);
+
+      // 3. Register the Custom Back Handler
+      window.SPCA.setBackHandler(() => {
+        const prevId = stepHistory.pop();
+        
+        // Hide current (which is actually nextId from the closure perspective)
+        // Ideally we grab the currently visible step, but using the IDs passed is safer:
+        container.querySelector('#'+nextId).classList.add('hidden');
+        container.querySelector('#'+prevId).classList.remove('hidden');
+        
+        // If stack is empty, release control back to Main Menu default
+        if (stepHistory.length === 0) {
+          window.SPCA.setBackHandler(null);
+        } else {
+          // Keep the handler active for the *next* back press (recursion handled by state)
+        }
+      });
+    }
+
     // ─── TEMPLATE ────────────────────────────────────────
-    // This rebuilds the DOM structure every time the flow restarts
     container.innerHTML = `
       <div id="step-type" class="schedule-step">
         <h2>Appointment Type</h2>
@@ -144,7 +173,7 @@
       <div id="step-loading" class="schedule-step hidden"><div class="spinner"></div></div>
     `;
 
-    // ─── INITIALIZE ROGUE FORMATTERS (RUN ONCE) ──────────
+    // ─── INITIALIZE ──────────────────────────────────────
     const dInput = container.querySelector('#rDate');
     const tInput = container.querySelector('#rTime');
     
@@ -166,10 +195,9 @@
       }
     });
 
+    // ─── LOGIC ───────────────────────────────────────────
 
-    // ─── LOGIC CONTROLLER ────────────────────────────────
-
-    // --- Step 1: Type ---
+    // Step 1: Type
     container.querySelectorAll('#step-type button').forEach(b => {
       b.addEventListener('click', () => {
         TX.type = b.dataset.type;
@@ -178,9 +206,8 @@
       });
     });
 
-    // --- Step 2: Slots ---
+    // Step 2: Slots
     let slotsCount = 6;
-
     function loadSlots() {
       const grid = container.querySelector('#slotGrid');
       grid.innerHTML = '<div class="spinner"></div>';
@@ -204,10 +231,10 @@
             <div style="font-size:0.75rem; opacity:0.5; margin-top:0.4rem;">ID: ${s.id}</div>
           `;
           
-          // 2. Updated Slot Click Logic: Skip Search if owner exists
           card.onclick = () => {
             TX.slot = s;
             TX.isRogue = false;
+            // Branch: If owner exists (Book Next), skip search
             if (TX.owner) {
                populateOwnerForm(TX.owner);
                nextStep('step-slots', 'step-owner');
@@ -222,18 +249,17 @@
 
     container.querySelector('#showMoreBtn').onclick = () => { slotsCount += 6; loadSlots(); };
     
-    // Updated Rogue Button Logic
     container.querySelector('#rogueBtn').onclick = () => {
       TX.isRogue = true;
       if (TX.owner) {
          populateOwnerForm(TX.owner);
-         nextStep('step-slots', 'step-owner'); // Note: 'step-slots' is current view
+         nextStep('step-slots', 'step-owner');
       } else {
          nextStep('step-slots', 'step-rogue');
       }
     };
 
-    // --- Rogue Logic ---
+    // Rogue Logic
     container.querySelector('#rNext').onclick = () => {
       const d = container.querySelector('#rDate').value;
       const t = container.querySelector('#rTime').value;
@@ -245,7 +271,6 @@
         <div class="modal-content" style="border-top: 6px solid #dc2626;">
           <h2 style="color:#b91c1c;">⚠️ Exception Warning</h2>
           <p>By scheduling this appointment a new slot will be created as a one-time exception for this client.</p>
-          <p><strong>Please only continue if Lipsey or the Infirmary has already approved this date/time.</strong></p>
           <div class="actions">
             <button id="rogueConfirm" class="btn" style="background:#dc2626;">I Understand, Create It</button>
             <button id="rogueCancel" class="btn secondary">Cancel</button>
@@ -258,8 +283,6 @@
       warnModal.querySelector('#rogueConfirm').onclick = () => {
          warnModal.remove();
          TX.rogueData = { date: d, time: t, ampm: container.querySelector('#rAmPm').value };
-         
-         // Logic to skip search if owner is preloaded
          if (TX.owner) {
             populateOwnerForm(TX.owner);
             nextStep('step-rogue', 'step-owner');
@@ -269,7 +292,7 @@
       };
     };
 
-    // --- Step 3: Client Search ---
+    // Step 3: Search
     const qSearch = container.querySelector('#qSearch');
     const sRes = container.querySelector('#searchResults');
     const btnSearch = container.querySelector('#btnSearch');
@@ -316,7 +339,7 @@
       nextStep('step-search', 'step-owner');
     };
 
-    // --- Step 4: Owner Form Helpers ---
+    // Step 4: Owner Form
     function getOwnerFormData() {
       return {
         'Owner ID': container.querySelector('#ownerId').value,
@@ -335,8 +358,6 @@
       const ids = ['oFirst','oLast','oPhone','oEmail','oAddress','oCity','oState','oZip','ownerId'];
       ids.forEach(id => container.querySelector('#'+id).value = '');
       
-      // 4. Update population to handle both API keys (camelCase) and Form Keys (Title Case)
-      // This ensures data persists when looping back from "Book Another"
       const val = (k1, k2) => data[k1] || data[k2] || '';
 
       container.querySelector('#oFirst').value = val('firstName', 'First Name');
@@ -362,7 +383,6 @@
 
     container.querySelector('#btnSaveOwner').onclick = () => {
       const payload = getOwnerFormData();
-
       const requiredFields = ['First Name', 'Last Name', 'Phone', 'Email', 'Street Address', 'City', 'State', 'Zip Code'];
       const missing = requiredFields.filter(field => !payload[field]);
       
@@ -375,7 +395,6 @@
       const isExistingClient = !!payload['Owner ID'];
 
       if (isExistingClient && currentJson === TX.originalOwnerState) {
-        console.log('No changes detected. Skipping backend save.');
         TX.owner = { ...payload, ownerId: payload['Owner ID'] };
         showPetModal(payload['Owner ID']);
         return;
@@ -388,17 +407,15 @@
       google.script.run.withSuccessHandler(id => {
         btn.textContent = 'Save & Select Pet';
         btn.disabled = false;
-        
         container.querySelector('#ownerId').value = id;
         payload['Owner ID'] = id;
         TX.originalOwnerState = JSON.stringify(payload); 
-        
         TX.owner = { ...payload, ownerId: id };
         showPetModal(id);
       }).apiUpsertOwner(payload, TX.scheduler);
     };
 
-    // --- Step 5: Pet Modal ---
+    // Step 5: Pet Modal
     function showPetModal(ownerId) {
       const modal = document.createElement('div');
       modal.className = 'modal';
@@ -472,7 +489,7 @@
       };
     }
 
-    // --- Step 6: Pet Form ---
+    // Step 6: Pet Form
     function populatePetForm(p) {
       const ids = ['petId','pName','pSpecies','pBreed1','pBreed2','pColor','pPattern','pSex','pFixed','pAge','pWeight'];
       ids.forEach(id => container.querySelector('#'+id).value = '');
@@ -483,7 +500,7 @@
       if(p.breed) container.querySelector('#pBreed1').value = p.breed;
       if(p.color) container.querySelector('#pColor').value = p.color;
       
-      // 🔹 FIX: Populate Pattern and Weight
+      // Populate Pattern and Weight
       if(p.pattern) container.querySelector('#pPattern').value = p.pattern;
       if(p.weight) container.querySelector('#pWeight').value = p.weight;
       
@@ -519,7 +536,7 @@
       }).apiUpsertPet(payload, TX.scheduler);
     };
 
-    // --- Step 7: Appt Details ---
+    // Step 7: Details
     function prepDetails() {
       container.querySelector('#dispType').textContent = TX.type;
       if(TX.isRogue) {
@@ -552,7 +569,7 @@
        showTransportModal();
     };
 
-    // ─── TRANSPORT MODAL ─────────────────────────────────
+    // Step 8: Transport Modal
     function showTransportModal() {
       const hasVetRecords = container.querySelector('input[name="hasRec"]:checked')?.value === 'Yes';
       const modal = document.createElement('div');
@@ -678,7 +695,7 @@
       }
     }
 
-    // ─── BOOKING ─────────────────────────────────────────
+    // Step 9: Book
     function doBook(transport) {
        const loading = container.querySelector('#step-loading');
        const details = container.querySelector('#step-details');
@@ -747,19 +764,11 @@
           </div>
        `;
        
-       // 3. Finish Logic: Capture owner and re-render structure
        const currentOwner = TX.owner;
        container.querySelector('#btnBookNext').onclick = () => {
-          // Re-enter the flow with the current owner preloaded
+          // Re-enter with persistent owner
           renderScheduleFlow(container, currentOwner);
        };
-    }
-
-    // Helper
-    function nextStep(curr, next) {
-      container.querySelector('#'+curr).classList.add('hidden');
-      container.querySelector('#'+next).classList.remove('hidden');
-      window.scrollTo({top:0, behavior:'smooth'});
     }
   };
 })();

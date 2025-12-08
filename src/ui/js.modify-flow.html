@@ -17,6 +17,11 @@
   // ———————————————————————————————————
   // Search Screen
   function renderSearch(container) {
+    // 🔹 NAV FIX: Ensure Back button goes to Main Menu from here
+    if (window.SPCA && window.SPCA.setBackHandler) {
+        window.SPCA.setBackHandler(null);
+    }
+
     container.innerHTML = `
         <div class="schedule-step">
         <h2>Find an Appointment to Modify</h2>
@@ -201,6 +206,11 @@
   // ———————————————————————————————————
   // Edit Form (same fields as scheduling, prefilled)
   function openEditForm(container, row) {
+    // 🔹 NAV FIX: Intercept "Back" to return to Search
+    if (window.SPCA && window.SPCA.setBackHandler) {
+        window.SPCA.setBackHandler(() => renderSearch(container));
+    }
+
     container.innerHTML = `
       <div class="schedule-step">
         <h2>Edit Appointment</h2>
@@ -322,17 +332,15 @@
     }).apiGetAdditionalServices();
 
     // Save / Cancel
-    // Save / Cancel
     const confirmBlock = container.querySelector('#mConfirm');
     container.querySelector('#mCancel').addEventListener('click', () => {
-    // back to search
-    renderModifyFlow(container);
+        renderSearch(container);
     });
 
     container.querySelector('#mSave').addEventListener('click', e => {
-    e.target.disabled = true; // ✅ Prevent double-click
-    const payload = collectPayload(container);
-    showTransportModal(container, row, payload);
+        e.target.disabled = true; // ✅ Prevent double-click
+        const payload = collectPayload(container);
+        showTransportModal(container, row, payload);
     });
   }
 
@@ -379,8 +387,6 @@
     modal.className = 'modal';
     const prevYes = (payload['Previous Vet Records'] === 'Yes');
 
-    // 1. Determine Current Selection Text
-    // Only show if the backend returned a value (won't show for new bookings if reused)
     const currentTransport = row.transportNeeded || '';
     const currentTextHtml = currentTransport 
       ? `<p style="margin-top:-0.5rem; margin-bottom:1.25rem; color:#4b5563; font-size:0.95rem; background:#f3f4f6; display:inline-block; padding:0.25rem 0.75rem; border-radius:8px;">
@@ -388,18 +394,14 @@
          </p>` 
       : '';
 
-    // 2. Pre-select the button if we want (Optional UX enhancement)
-    // If you want the buttons to auto-select based on previous value, let me know! 
-    // For now, we just show the text as requested.
-
     modal.innerHTML = `
       <div class="modal-content">
         <p style="margin-bottom:0.5rem;">Does this client require transportation assistance for this appointment?</p>
         ${currentTextHtml}
         
         <div class="actions transport-actions">
-          <button class="btn transportBtn" data-transport="Yes">Yes</button>
-          <button class="btn transportBtn" data-transport="No">No</button>
+          <button class="btn secondary transportBtn" data-transport="Yes">Yes</button>
+          <button class="btn secondary transportBtn" data-transport="No">No</button>
         </div>
         ${prevYes ? `
           <hr class="divider">
@@ -418,8 +420,14 @@
     let chosenTransport = '';
     modal.querySelectorAll('.transportBtn').forEach(b => {
       b.addEventListener('click', () => {
-        modal.querySelectorAll('.transportBtn').forEach(x => x.classList.remove('selected'));
+        modal.querySelectorAll('.transportBtn').forEach(x => {
+            x.classList.remove('selected');
+            x.classList.add('secondary');
+        });
+        
+        b.classList.remove('secondary');
         b.classList.add('selected');
+        
         chosenTransport = b.dataset.transport;
         modal.querySelector('#mSubmit').disabled = !chosenTransport;
       });

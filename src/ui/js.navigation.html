@@ -2,13 +2,29 @@
 document.addEventListener('DOMContentLoaded', () => {
   const { $$, backBtn, header, sectionTitle, mainMenu, views, clearClientCache } = window.SPCA;
 
+  // ─── Custom Back Handler Logic ───
+  // This allows specific flows (Schedule/Modify) to override the back button
+  // behavior (e.g. go to previous step) instead of exiting to the main menu.
+  let customBackAction = null;
+
+  window.SPCA.setBackHandler = (fn) => {
+    customBackAction = fn;
+  };
+
   // ─── Tile navigation ───────────────────────────
   $$('.tile').forEach(btn => {
     btn.addEventListener('click', () => openView(btn.dataset.view));
   });
 
-  // ─── Back button: return to main menu ──────────
+  // ─── Back button: return to main menu OR custom step ──────────
   backBtn.addEventListener('click', () => {
+    // 1. If a flow has set a custom back action, run it
+    if (typeof customBackAction === 'function') {
+      customBackAction();
+      return;
+    }
+
+    // 2. Default: Return to Main Menu
     clearClientCache();
     header.classList.add('hidden');
     sectionTitle.textContent = '';
@@ -19,6 +35,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ─── View switching logic ──────────────────────
   function openView(view) {
+    // Reset handler when entering a new top-level view
+    customBackAction = null;
+
     mainMenu.classList.add('hidden');
     header.classList.remove('hidden');
     sectionTitle.textContent = viewTitle(view);
