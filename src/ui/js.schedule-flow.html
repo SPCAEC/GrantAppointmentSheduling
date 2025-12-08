@@ -482,6 +482,11 @@
       if(p.species) container.querySelector('#pSpecies').value = p.species;
       if(p.breed) container.querySelector('#pBreed1').value = p.breed;
       if(p.color) container.querySelector('#pColor').value = p.color;
+      
+      // 🔹 FIX: Populate Pattern and Weight
+      if(p.pattern) container.querySelector('#pPattern').value = p.pattern;
+      if(p.weight) container.querySelector('#pWeight').value = p.weight;
+      
       if(p.age) container.querySelector('#pAge').value = p.age;
       if(p.sex) container.querySelector('#pSex').value = p.sex;
       if(p.fixed) container.querySelector('#pFixed').value = p.fixed;

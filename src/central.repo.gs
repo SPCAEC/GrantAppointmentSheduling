@@ -92,11 +92,15 @@ function getPetsByOwnerId_(ownerId) {
   const hMap = {};
   headers.forEach((h, i) => hMap[String(h).trim().toLowerCase()] = i);
   
+  // 🔹 FIX: Identify Pattern and Weight columns safely
+  const idxPattern = hMap['color pattern'] !== undefined ? hMap['color pattern'] : hMap['pattern'];
+  const idxWeight  = hMap['weight'] !== undefined ? hMap['weight'] : hMap['approx weight'];
+
   const pets = [];
   
   data.forEach((row, i) => {
     const pOwnerId = String(row[hMap['owner id']] || '');
-    const status = String(row[hMap['pet status']] || 'Active'); // Default Active if blank
+    const status = String(row[hMap['pet status']] || 'Active'); 
     
     if (pOwnerId === ownerId && status.toLowerCase() === 'active') {
       pets.push({
@@ -106,6 +110,9 @@ function getPetsByOwnerId_(ownerId) {
         species: row[hMap['species']],
         breed: row[hMap['primary breed']],
         color: row[hMap['color']],
+        // 🔹 FIX: Retrieve Pattern and Weight
+        pattern: (idxPattern !== undefined) ? row[idxPattern] : '',
+        weight: (idxWeight !== undefined) ? row[idxWeight] : '',
         age: row[hMap['age']],
         sex: row[hMap['sex']],
         fixed: row[hMap['altered']]
