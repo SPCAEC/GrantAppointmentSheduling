@@ -539,21 +539,23 @@
       const modal = document.createElement('div');
       modal.className = 'modal';
 
+      // FIX: Added 'secondary' class to Yes/No buttons so they start grey
+      // FIX: Added 'secondary' class to Upload/Request/Remind buttons so they start grey
       let inner = `
         <div class="modal-content">
           <p>Does this client require transportation assistance?</p>
           <div class="actions transport-actions">
-            <button class="btn transportBtn" data-val="Yes">Yes</button>
-            <button class="btn transportBtn" data-val="No">No</button>
+            <button class="btn secondary transportBtn" data-val="Yes">Yes</button>
+            <button class="btn secondary transportBtn" data-val="No">No</button>
           </div>
           <hr class="divider">
           ${hasVetRecords ? `
             <p>You indicated the client has previous veterinary records. Please upload, send request, or remind.</p>
-            <div class="actions">
+            <div class="actions record-actions">
               <input type="file" id="recordsUpload" multiple style="display:none;">
-              <button id="uploadBtn" class="btn" disabled>Upload</button>
-              <button id="sendRequestBtn" class="btn secondary" disabled>Request</button>
-              <button id="remindLaterBtn" class="btn tertiary" disabled>Remind</button>
+              <button id="uploadBtn" class="btn secondary recordBtn">Upload</button>
+              <button id="sendRequestBtn" class="btn secondary recordBtn">Request</button>
+              <button id="remindLaterBtn" class="btn secondary recordBtn">Remind</button>
             </div>
             <div id="uploadList" class="upload-list"></div>
             <div id="modalToast"></div>
@@ -568,24 +570,49 @@
           if(t) { t.textContent = msg; t.className = k==='error'?'error':'success-message'; }
       };
 
+      // 1. Handle Transport Buttons (Exclusive Selection)
       let transport = null;
       modal.querySelectorAll('.transportBtn').forEach(b => {
          b.onclick = () => {
-            modal.querySelectorAll('.transportBtn').forEach(x => x.classList.remove('selected'));
+            // Reset all transport buttons to grey
+            modal.querySelectorAll('.transportBtn').forEach(x => {
+                x.classList.remove('selected');
+                x.classList.add('secondary'); // Make grey
+                x.style.background = '';      // Clear any inline styles
+                x.style.color = '';
+            });
+
+            // Highlight clicked button (Blue)
+            b.classList.remove('secondary');
             b.classList.add('selected');
+            
             transport = b.dataset.val;
+
+            // If no vet records needed, close and book immediately
             if(!hasVetRecords) {
                modal.remove();
                doBook(transport);
-            } else {
-               modal.querySelectorAll('.btn').forEach(x => x.removeAttribute('disabled'));
-            }
+            } 
          };
       });
 
       if(hasVetRecords) {
+          // Helper to highlight active record button
+          const highlightRecordBtn = (activeId) => {
+              modal.querySelectorAll('.recordBtn').forEach(btn => {
+                  if (btn.id === activeId) {
+                      btn.classList.remove('secondary'); // Turn Blue
+                      btn.classList.add('selected');
+                  } else {
+                      btn.classList.add('secondary');    // Turn Grey
+                      btn.classList.remove('selected');
+                  }
+              });
+          };
+
           // Upload
           modal.querySelector('#uploadBtn').onclick = () => {
+              highlightRecordBtn('uploadBtn');
               const input = modal.querySelector('#recordsUpload');
               input.click();
               input.onchange = () => {
@@ -603,6 +630,7 @@
                              done++;
                              if(done === files.length) {
                                 toast('Uploaded!', 'success');
+                                // Delay slightly so user sees success, then book
                                 setTimeout(() => { modal.remove(); doBook(transport); }, 1000);
                              }
                           }).apiUploadVetRecord(f.name, b64, res.folderId);
@@ -615,6 +643,7 @@
 
           // Request
           modal.querySelector('#sendRequestBtn').onclick = () => {
+             highlightRecordBtn('sendRequestBtn');
              const btn = modal.querySelector('#sendRequestBtn');
              btn.textContent = 'Sending...';
              google.script.run.withSuccessHandler(res => {
@@ -627,6 +656,7 @@
 
           // Remind
           modal.querySelector('#remindLaterBtn').onclick = () => {
+             highlightRecordBtn('remindLaterBtn');
              const btn = modal.querySelector('#remindLaterBtn');
              btn.textContent = 'Sending...';
              const card = `${TX.slot ? TX.slot.date : TX.rogueData.date}`;
