@@ -2,7 +2,8 @@
 (function() {
   const { backBtn, sectionTitle } = window.SPCA || {};
 
-  window.renderScheduleFlow = function(container) {
+  // 1. Accept preloadedOwner argument to persist client data on "Book Next"
+  window.renderScheduleFlow = function(container, preloadedOwner = null) {
     if(sectionTitle) sectionTitle.textContent = 'Schedule New Appointment';
 
     // ─── STATE ───────────────────────────────────────────
@@ -12,12 +13,13 @@
       slot: null,
       isRogue: false,
       rogueData: {},
-      owner: null,
+      owner: preloadedOwner, // Initialize with passed owner if exists
       pet: null,
-      originalOwnerState: null // Stores the initial state of the owner form
+      originalOwnerState: null
     };
 
     // ─── TEMPLATE ────────────────────────────────────────
+    // This rebuilds the DOM structure every time the flow restarts
     container.innerHTML = `
       <div id="step-type" class="schedule-step">
         <h2>Appointment Type</h2>
@@ -202,21 +204,33 @@
             <div style="font-size:0.75rem; opacity:0.5; margin-top:0.4rem;">ID: ${s.id}</div>
           `;
           
+          // 2. Updated Slot Click Logic: Skip Search if owner exists
           card.onclick = () => {
             TX.slot = s;
             TX.isRogue = false;
-            nextStep('step-slots', 'step-search');
+            if (TX.owner) {
+               populateOwnerForm(TX.owner);
+               nextStep('step-slots', 'step-owner');
+            } else {
+               nextStep('step-slots', 'step-search');
+            }
           };
           grid.appendChild(card);
         });
       }).apiGetAvailableSlots(TX.type, slotsCount);
     } 
 
-    // Slot Page Actions
     container.querySelector('#showMoreBtn').onclick = () => { slotsCount += 6; loadSlots(); };
+    
+    // Updated Rogue Button Logic
     container.querySelector('#rogueBtn').onclick = () => {
       TX.isRogue = true;
-      nextStep('step-slots', 'step-rogue');
+      if (TX.owner) {
+         populateOwnerForm(TX.owner);
+         nextStep('step-slots', 'step-owner'); // Note: 'step-slots' is current view
+      } else {
+         nextStep('step-slots', 'step-rogue');
+      }
     };
 
     // --- Rogue Logic ---
@@ -244,7 +258,14 @@
       warnModal.querySelector('#rogueConfirm').onclick = () => {
          warnModal.remove();
          TX.rogueData = { date: d, time: t, ampm: container.querySelector('#rAmPm').value };
-         nextStep('step-rogue', 'step-search');
+         
+         // Logic to skip search if owner is preloaded
+         if (TX.owner) {
+            populateOwnerForm(TX.owner);
+            nextStep('step-rogue', 'step-owner');
+         } else {
+            nextStep('step-rogue', 'step-search');
+         }
       };
     };
 
@@ -253,7 +274,6 @@
     const sRes = container.querySelector('#searchResults');
     const btnSearch = container.querySelector('#btnSearch');
 
-    // Trigger Search on Enter
     qSearch.addEventListener('keyup', (e) => {
       if (e.key === 'Enter') btnSearch.click();
     });
@@ -267,7 +287,6 @@
             return; 
         }
         
-        // Auto-skip if 1 match
         if(matches.length === 1) {
             TX.owner = matches[0];
             populateOwnerForm(matches[0]);
@@ -292,7 +311,7 @@
     };
 
     container.querySelector('#btnNewClient').onclick = () => {
-      TX.owner = null; // New
+      TX.owner = null; 
       populateOwnerForm({}); 
       nextStep('step-search', 'step-owner');
     };
@@ -313,26 +332,26 @@
     }
 
     function populateOwnerForm(data) {
-      // Clear fields
       const ids = ['oFirst','oLast','oPhone','oEmail','oAddress','oCity','oState','oZip','ownerId'];
       ids.forEach(id => container.querySelector('#'+id).value = '');
       
-      // Populate fields
-      if(data.firstName) container.querySelector('#oFirst').value = data.firstName;
-      if(data.lastName) container.querySelector('#oLast').value = data.lastName;
-      if(data.phone) container.querySelector('#oPhone').value = data.phone;
-      if(data.email) container.querySelector('#oEmail').value = data.email;
-      if(data.address) container.querySelector('#oAddress').value = data.address;
-      if(data.city) container.querySelector('#oCity').value = data.city;
-      if(data.state) container.querySelector('#oState').value = data.state;
-      if(data.zip) container.querySelector('#oZip').value = data.zip;
-      if(data.ownerId) container.querySelector('#ownerId').value = data.ownerId;
+      // 4. Update population to handle both API keys (camelCase) and Form Keys (Title Case)
+      // This ensures data persists when looping back from "Book Another"
+      const val = (k1, k2) => data[k1] || data[k2] || '';
 
-      // 🔹 Snapshot the initial state so we know if it changes
+      container.querySelector('#oFirst').value = val('firstName', 'First Name');
+      container.querySelector('#oLast').value = val('lastName', 'Last Name');
+      container.querySelector('#oPhone').value = val('phone', 'Phone');
+      container.querySelector('#oEmail').value = val('email', 'Email');
+      container.querySelector('#oAddress').value = val('address', 'Street Address');
+      container.querySelector('#oCity').value = val('city', 'City');
+      container.querySelector('#oState').value = val('state', 'State');
+      container.querySelector('#oZip').value = val('zip', 'Zip Code');
+      container.querySelector('#ownerId').value = val('ownerId', 'Owner ID');
+
       TX.originalOwnerState = JSON.stringify(getOwnerFormData());
     }
 
-    // Phone Formatting
     const pInput = container.querySelector('#oPhone');
     pInput.addEventListener('blur', () => {
         const digits = pInput.value.replace(/\D/g, '');
@@ -341,11 +360,9 @@
         }
     });
 
-    // Save Button Logic
     container.querySelector('#btnSaveOwner').onclick = () => {
       const payload = getOwnerFormData();
 
-      // 1. Strict Validation: Check required fields
       const requiredFields = ['First Name', 'Last Name', 'Phone', 'Email', 'Street Address', 'City', 'State', 'Zip Code'];
       const missing = requiredFields.filter(field => !payload[field]);
       
@@ -354,7 +371,6 @@
         return;
       }
       
-      // 2. Dirty Check: Skip save if nothing changed (prevents duplicates)
       const currentJson = JSON.stringify(payload);
       const isExistingClient = !!payload['Owner ID'];
 
@@ -365,7 +381,6 @@
         return;
       }
 
-      // 3. Save Changes (only if dirty or new)
       const btn = container.querySelector('#btnSaveOwner');
       btn.textContent = 'Saving...';
       btn.disabled = true;
@@ -374,10 +389,9 @@
         btn.textContent = 'Save & Select Pet';
         btn.disabled = false;
         
-        // Update state with new ID
         container.querySelector('#ownerId').value = id;
         payload['Owner ID'] = id;
-        TX.originalOwnerState = JSON.stringify(payload); // Update snapshot
+        TX.originalOwnerState = JSON.stringify(payload); 
         
         TX.owner = { ...payload, ownerId: id };
         showPetModal(id);
@@ -539,8 +553,6 @@
       const modal = document.createElement('div');
       modal.className = 'modal';
 
-      // FIX: Added 'secondary' class to Yes/No buttons so they start grey
-      // FIX: Added 'secondary' class to Upload/Request/Remind buttons so they start grey
       let inner = `
         <div class="modal-content">
           <p>Does this client require transportation assistance?</p>
@@ -570,25 +582,21 @@
           if(t) { t.textContent = msg; t.className = k==='error'?'error':'success-message'; }
       };
 
-      // 1. Handle Transport Buttons (Exclusive Selection)
       let transport = null;
       modal.querySelectorAll('.transportBtn').forEach(b => {
          b.onclick = () => {
-            // Reset all transport buttons to grey
             modal.querySelectorAll('.transportBtn').forEach(x => {
                 x.classList.remove('selected');
-                x.classList.add('secondary'); // Make grey
-                x.style.background = '';      // Clear any inline styles
+                x.classList.add('secondary'); 
+                x.style.background = '';
                 x.style.color = '';
             });
 
-            // Highlight clicked button (Blue)
             b.classList.remove('secondary');
             b.classList.add('selected');
             
             transport = b.dataset.val;
 
-            // If no vet records needed, close and book immediately
             if(!hasVetRecords) {
                modal.remove();
                doBook(transport);
@@ -597,20 +605,18 @@
       });
 
       if(hasVetRecords) {
-          // Helper to highlight active record button
           const highlightRecordBtn = (activeId) => {
               modal.querySelectorAll('.recordBtn').forEach(btn => {
                   if (btn.id === activeId) {
-                      btn.classList.remove('secondary'); // Turn Blue
+                      btn.classList.remove('secondary');
                       btn.classList.add('selected');
                   } else {
-                      btn.classList.add('secondary');    // Turn Grey
+                      btn.classList.add('secondary');
                       btn.classList.remove('selected');
                   }
               });
           };
 
-          // Upload
           modal.querySelector('#uploadBtn').onclick = () => {
               highlightRecordBtn('uploadBtn');
               const input = modal.querySelector('#recordsUpload');
@@ -630,7 +636,6 @@
                              done++;
                              if(done === files.length) {
                                 toast('Uploaded!', 'success');
-                                // Delay slightly so user sees success, then book
                                 setTimeout(() => { modal.remove(); doBook(transport); }, 1000);
                              }
                           }).apiUploadVetRecord(f.name, b64, res.folderId);
@@ -641,7 +646,6 @@
               };
           };
 
-          // Request
           modal.querySelector('#sendRequestBtn').onclick = () => {
              highlightRecordBtn('sendRequestBtn');
              const btn = modal.querySelector('#sendRequestBtn');
@@ -654,7 +658,6 @@
              }).apiSendVetRecordsRequest(TX.owner['Email'], '', TX.owner['First Name'], TX.pet['Pet Name']);
           };
 
-          // Remind
           modal.querySelector('#remindLaterBtn').onclick = () => {
              highlightRecordBtn('remindLaterBtn');
              const btn = modal.querySelector('#remindLaterBtn');
@@ -739,11 +742,11 @@
           </div>
        `;
        
+       // 3. Finish Logic: Capture owner and re-render structure
+       const currentOwner = TX.owner;
        container.querySelector('#btnBookNext').onclick = () => {
-          TX.slot = null;
-          TX.isRogue = false;
-          TX.pet = null; 
-          nextStep('step-loading', 'step-type');
+          // Re-enter the flow with the current owner preloaded
+          renderScheduleFlow(container, currentOwner);
        };
     }
 
