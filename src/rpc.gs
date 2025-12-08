@@ -471,3 +471,38 @@ function getGetLists() {
         services: apiGetAdditionalServices().services
     }
 }
+// ─── DROPDOWN DATA HELPERS ───────────────────────────
+
+function apiGetVaccineLists() {
+  return apiResponse_(() => {
+    return {
+      canine: [
+        'Rabies', 
+        'Distemper (DA2PP)', 
+        'Bordetella', 
+        'Leptospirosis', 
+        'Lyme'
+      ],
+      feline: [
+        'Rabies', 
+        'FVRCP', 
+        'FeLV'
+      ]
+    };
+  });
+}
+
+function apiGetAdditionalServices() {
+  return apiResponse_(() => {
+    return {
+      services: [
+        'Microchip', 
+        'Nail Trim', 
+        'E-Collar', 
+        'Hernia Repair', 
+        'Cryptorchid',
+        'Flea/Tick Prevention'
+      ]
+    };
+  });
+}
