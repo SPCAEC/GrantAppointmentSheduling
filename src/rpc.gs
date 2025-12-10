@@ -498,10 +498,10 @@ function apiGetAdditionalServices() {
       services: [
         'Microchip', 
         'Nail Trim', 
-        'E-Collar', 
-        'Hernia Repair', 
-        'Cryptorchid',
+        'Dewormer', 
+        'Hernia Repair',
         'Flea/Tick Prevention'
+        'Dental'
       ]
     };
   });
