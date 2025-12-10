@@ -506,3 +506,99 @@ function apiGetAdditionalServices() {
     };
   });
 }
+// ─── MODIFY / RESCHEDULE SUPPORT ─────────────────────
+
+/**
+ * Gather all context needed to Modify/Reschedule:
+ * 1. The current Appointment details (from Master Schedule)
+ * 2. The *Fresh* Owner details (from Central DB)
+ * 3. The *Fresh* Pet details (from Central DB)
+ */
+function apiGetModifyContext(apptId) {
+  return apiResponse_(() => {
+    // 1. Get Appointment Row from Master
+    const allAppts = readAllAppointments_();
+    const appt = allAppts.find(r => String(r[CFG.COLS.ID]).trim() === String(apptId).trim());
+    if (!appt) throw new Error('Appointment not found');
+
+    const ownerId = appt[CFG.COLS.OWNER_ID];
+    const petId   = appt[CFG.COLS.PET_ID];
+
+    // 2. Get Owner from Central
+    const owners = findOwnersInDb_(ownerId); // Reuses existing repo function
+    const owner = owners.length > 0 ? owners[0] : null;
+
+    // 3. Get Pet from Central
+    const pets = getPetsByOwnerId_(ownerId); // Reuses existing repo function
+    const pet = pets.find(p => String(p.petId) === String(petId)) || null;
+
+    return { appointment: appt, owner: owner, pet: pet };
+  });
+}
+
+/**
+ * Reschedule: Atomic Move
+ * 1. Clears the OLD appointment (Status -> Available)
+ * 2. Books the NEW appointment (Update Master + Upsert Central DB)
+ */
+function apiRescheduleAppointment(oldApptId, newSlotId, newType, payload, scheduler, isRogue, rogueData) {
+  return apiResponse_(() => {
+    // A. "Cancel" the old appointment (Reset to Available)
+    // We reuse the existing logic but pass a specific reason
+    const cancelRes = apiCancelAppointment(oldApptId, "Rescheduled to new slot", scheduler);
+    if (!cancelRes.ok) throw new Error(cancelRes.error);
+
+    // B. Book the new appointment
+    // Note: upsertOwner and upsertPet happen via frontend calls step-by-step, 
+    // so here we just need to finalize the booking on the Master Sheet.
+    
+    if (isRogue) {
+      // Logic from apiCreateRogueAppointment
+      // We inject the rogue data into the payload
+      payload['Date'] = rogueData.date;
+      payload['Time'] = rogueData.time;
+      payload['AM or PM'] = rogueData.ampm;
+      payload['Appointment Type'] = newType;
+      payload['Scheduled By'] = scheduler;
+      
+      const newId = getNextAppointmentId_();
+      const zip = String(payload['Zip Code'] || '').trim();
+      const grant = (zip.includes('14215') || zip.includes('14211')) ? 'PFL' : 'Incubator';
+      
+      // Determine day of week
+      let dayOfWeek = '';
+      if (rogueData.date) {
+        const parts = rogueData.date.split('/');
+        if (parts.length === 3) {
+          const d = new Date(+parts[2], +parts[0] - 1, +parts[1]); 
+          dayOfWeek = Utilities.formatDate(d, Session.getScriptTimeZone(), 'EEEE');
+        }
+      }
+
+      const fullRecord = normalizePayload_({
+        ...payload,
+        [CFG.COLS.ID]: newId,
+        [CFG.COLS.GRANT]: grant,
+        [CFG.COLS.STATUS]: 'Reserved',
+        [CFG.COLS.NEEDS_SCHED]: 'Yes',
+        [CFG.COLS.DAY]: dayOfWeek,
+        [CFG.COLS.DATE]: rogueData.date,
+        [CFG.COLS.TIME]: rogueData.time,
+        [CFG.COLS.AMPM]: rogueData.ampm,
+        [CFG.COLS.TYPE]: newType,
+        [CFG.COLS.SCHEDULED_BY]: scheduler,
+        [CFG.COLS.UPDATED_BY]: scheduler,
+        [CFG.COLS.CREATED_AT]: new Date()
+      });
+      
+      appendNewAppointment_(fullRecord);
+      return { id: newId };
+
+    } else {
+      // Standard Booking
+      const bookRes = apiBookAppointment(payload, newType, payload['Date'], payload['Time'], newSlotId, scheduler);
+      if (!bookRes.ok) throw new Error(bookRes.error);
+      return { success: true };
+    }
+  });
+}

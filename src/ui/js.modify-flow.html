@@ -1,478 +1,704 @@
 <script>
 (function () {
-  const { $, $$, getClientCache, setClientCache, clearClientCache } = window.SPCA || {};
+  const { $, $$, getClientCache, setClientCache, clearClientCache, sectionTitle } = window.SPCA || {};
   const SCHEDULER = () => (typeof getSchedulerName === 'function' ? getSchedulerName() : '');
 
-  // Public entry from navigation when user clicks "Modify"
+  // ─── PUBLIC ENTRY ────────────────────────────────────
   window.renderModifyFlow = function renderModifyFlow(container) {
-    // if Who-Are-You wrapper didn’t catch it, ensure we have a name
     if (!SCHEDULER()) {
-        if (typeof showWhoAreYouScreen === 'function') {
-            return showWhoAreYouScreen(container, () => renderModifyFlow(container));
-        }
+      if (typeof showWhoAreYouScreen === 'function') {
+        return showWhoAreYouScreen(container, () => renderModifyFlow(container));
+      }
     }   
-    renderSearch(container);
-  };
+    
+    if(sectionTitle) sectionTitle.textContent = 'Modify / Reschedule';
 
-  // ———————————————————————————————————
-  // Search Screen
-  function renderSearch(container) {
-    // 🔹 NAV FIX: Ensure Back button goes to Main Menu from here
-    if (window.SPCA && window.SPCA.setBackHandler) {
-        window.SPCA.setBackHandler(null);
+    // ─── STATE ───────────────────────────────────────────
+    const TX = {
+      mode: null, // 'UPDATE' or 'RESCHEDULE'
+      apptId: null,
+      originalAppt: null, // Raw data from Master Sheet
+      owner: null, // Fresh data from Central
+      pet: null,   // Fresh data from Central
+      // Reschedule specifics:
+      newType: null,
+      newSlot: null,
+      isRogue: false,
+      rogueData: {},
+      // Snapshots for dirty checking
+      originalOwnerState: null
+    };
+
+    // ─── HISTORY STACK ───────────────────────────────────
+    const stepHistory = [];
+
+    function nextStep(currentId, nextId) {
+      container.querySelector('#'+currentId).classList.add('hidden');
+      container.querySelector('#'+nextId).classList.remove('hidden');
+      window.scrollTo({top:0, behavior:'smooth'});
+
+      stepHistory.push(currentId);
+
+      window.SPCA.setBackHandler(() => {
+        const prevId = stepHistory.pop();
+        container.querySelector('#'+nextId).classList.add('hidden');
+        container.querySelector('#'+prevId).classList.remove('hidden');
+        
+        if (stepHistory.length === 0) {
+          window.SPCA.setBackHandler(null);
+        }
+      });
     }
 
+    // ─── TEMPLATE ────────────────────────────────────────
     container.innerHTML = `
-        <div class="schedule-step">
-        <h2>Find an Appointment to Modify</h2>
+      <div id="step-search" class="schedule-step">
+        <h2>Find Appointment</h2>
         <div class="grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem;">
-            
             <div class="field">
-              <label>Date (MM/DD/YYYY)</label>
+              <label>Date</label>
               <div style="display:flex; align-items:center; gap:8px;">
                 <input id="mDate" type="text" placeholder="MM/DD/YYYY" maxlength="10">
                 <div style="position:relative; width:32px; height:32px; flex-shrink:0;">
                    <input id="mDatePicker" type="date" 
                           style="position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; z-index:2;">
-                   <button class="btn secondary" style="width:100%; height:100%; padding:0; display:flex; align-items:center; justify-content:center;">
-                     📅
-                   </button>
+                   <button class="btn secondary" style="width:100%; height:100%; padding:0; display:flex; align-items:center; justify-content:center;">📅</button>
                 </div>
               </div>
             </div>
-
-            <div class="field">
-            <label>Client Name (exact, case-insensitive)</label>
-            <input id="mClient" type="text" placeholder="First, Last, or First Last">
-            </div>
-            <div class="field">
-            <label>Pet Name (exact, case-insensitive)</label>
-            <input id="mPet" type="text" placeholder="e.g., Max">
-            </div>
+            <div class="field"><label>Client Name</label><input id="mClient" type="text"></div>
+            <div class="field"><label>Pet Name</label><input id="mPet" type="text"></div>
         </div>
         <div class="actions">
             <button id="mSearchBtn" class="btn">Search</button>
             <button id="mClearBtn" class="btn secondary">Clear</button>
         </div>
         <div id="mResults" style="margin-top:1rem;"></div>
+      </div>
+
+      <div id="step-mode" class="schedule-step hidden">
+        <h2>What would you like to do?</h2>
+        <div class="card" style="padding:2rem; text-align:center;">
+           <p style="font-size:1.1rem; margin-bottom:2rem;">
+             You selected: <strong id="selApptDesc"></strong>
+           </p>
+           <div class="actions" style="flex-direction:column; gap:1rem;">
+             <button id="btnReschedule" class="btn" style="height:60px; font-size:1.1rem;">Yes - Reschedule Appointment</button>
+             <button id="btnUpdateOnly" class="btn secondary" style="height:60px; font-size:1.1rem;">No - Update Info Only</button>
+           </div>
         </div>
+      </div>
+
+      <div id="step-type" class="schedule-step hidden">
+        <h2>New Appointment Type</h2>
+        <div class="option-buttons">
+          <button class="btn" data-type="Surgery">Surgery</button>
+          <button class="btn" data-type="Wellness">Wellness</button>
+        </div>
+      </div>
+
+      <div id="step-slots" class="schedule-step hidden">
+        <h2>Select New Slot</h2>
+        <div id="slotGrid" class="card-grid"></div>
+        <div class="actions">
+          <button id="showMoreBtn" class="btn secondary">Show More</button>
+          <button id="rogueBtn" class="btn tertiary" style="border:2px dashed #dc2626; color:#dc2626;">Go Rogue (Create Exception)</button>
+        </div>
+      </div>
+
+      <div id="step-rogue" class="schedule-step hidden">
+        <div style="background:#fff1f2; padding:1rem; border-radius:8px; border:1px solid #dc2626; margin-bottom:1.5rem;">
+          <h3 style="color:#b91c1c; margin-top:0;">Exception Details</h3>
+          <div class="field"><label>Date</label><input id="rDate" type="text" placeholder="MM/DD/YYYY"></div>
+          <div class="grid" style="grid-template-columns:1fr 1fr; gap:1rem; display:grid;">
+            <div class="field"><label>Time</label><input id="rTime" type="text" placeholder="09:00"></div>
+            <div class="field"><label>AM/PM</label><select id="rAmPm"><option>AM</option><option>PM</option></select></div>
+          </div>
+        </div>
+        <div class="actions"><button id="rNext" class="btn">Next</button></div>
+      </div>
+
+      <div id="step-owner" class="schedule-step hidden">
+        <h2>Update Owner Info</h2>
+        <input type="hidden" id="ownerId">
+        <div class="grid" style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+          <div class="field"><label>First Name</label><input id="oFirst"></div>
+          <div class="field"><label>Last Name</label><input id="oLast"></div>
+        </div>
+        <div class="field"><label>Phone</label><input id="oPhone"></div>
+        <div class="field"><label>Email</label><input id="oEmail"></div>
+        <div class="field"><label>Address</label><input id="oAddress"></div>
+        <div class="grid" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.5rem;">
+          <div class="field"><label>City</label><input id="oCity"></div>
+          <div class="field"><label>State</label><input id="oState"></div>
+          <div class="field"><label>Zip</label><input id="oZip"></div>
+        </div>
+        <div class="actions">
+          <button id="btnSaveOwner" class="btn">Save & Review Pet</button>
+        </div>
+      </div>
+
+      <div id="step-pet" class="schedule-step hidden">
+        <h2>Update Pet Info</h2>
+        <input type="hidden" id="petId">
+        <div class="field"><label>Pet Name</label><input id="pName"></div>
+        <div class="field"><label>Species</label>
+          <select id="pSpecies"><option>Canine</option><option>Feline</option><option>Other</option></select>
+        </div>
+        <div class="grid" style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+          <div class="field"><label>Breed 1</label><input id="pBreed1"></div>
+          <div class="field"><label>Breed 2</label><input id="pBreed2"></div>
+          <div class="field"><label>Color</label><input id="pColor"></div>
+          <div class="field"><label>Pattern</label><input id="pPattern"></div>
+          <div class="field"><label>Sex</label><select id="pSex"><option>Male</option><option>Female</option><option>Unknown</option></select></div>
+          <div class="field"><label>Spayed/Neutered</label><select id="pFixed"><option>Spayed</option><option>Neutered</option><option>No</option><option>Unknown</option></select></div>
+        </div>
+        <div class="grid" style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+          <div class="field"><label>Age</label><input id="pAge"></div>
+          <div class="field"><label>Weight</label><input id="pWeight" type="number"></div>
+        </div>
+        <div class="actions">
+          <button id="btnSavePet" class="btn">Save & Review Appointment</button>
+        </div>
+      </div>
+
+      <div id="step-details" class="schedule-step hidden">
+        <h2>Appointment Details</h2>
+        <div style="background:#f0f9ff; padding:1rem; border-radius:8px; margin-bottom:1rem; border:1px solid #bae6fd;">
+          <div id="summaryText"></div>
+        </div>
+        
+        <div class="field"><label>Vaccines Needed</label><div id="vaccines" class="option-list"></div></div>
+        <div class="field"><label>Additional Services</label><div id="services" class="option-list"></div></div>
+        
+        <div class="field">
+          <label>Previous Vet Records?</label>
+          <div class="option-buttons-left">
+            <label><input type="radio" name="hasRec" value="Yes"> Yes</label>
+            <label><input type="radio" name="hasRec" value="No"> No</label>
+          </div>
+        </div>
+        
+        <div class="field"><label>Vet Office</label><input id="aVet"></div>
+        <div class="field"><label>Allergies</label><input id="aAllergy"></div>
+        <div class="field"><label>Notes</label><textarea id="aNotes"></textarea></div>
+        
+        <div class="actions">
+          <button id="btnFinalize" class="btn">Finish</button>
+        </div>
+      </div>
+
+      <div id="step-loading" class="schedule-step hidden"><div class="spinner"></div></div>
     `;
 
+    // ─── INIT LOGIC ──────────────────────────────────────
+    window.SPCA.setBackHandler(null);
+    setupSearchLogic(container, TX, nextStep);
+    setupRescheduleFlow(container, TX, nextStep);
+    setupForms(container, TX, nextStep);
+  };
+
+  // ─── MODULE: SEARCH LOGIC ──────────────────────────────
+  function setupSearchLogic(container, TX, nextStep) {
     const mDate = container.querySelector('#mDate');
     const mDatePicker = container.querySelector('#mDatePicker');
-    const mClient = container.querySelector('#mClient');
-    const mPet = container.querySelector('#mPet');
-    const results = container.querySelector('#mResults');
     const searchBtn = container.querySelector('#mSearchBtn');
+    const results = container.querySelector('#mResults');
 
-    // ─── 1. Date Logic (Auto-Format & Picker) ───
-    
-    // A. Sync Picker -> Text
+    // Date
     mDatePicker.addEventListener('change', () => {
       if (mDatePicker.value) {
-        // Picker returns YYYY-MM-DD, convert to MM/DD/YYYY
         const [y, m, d] = mDatePicker.value.split('-');
         mDate.value = `${m}/${d}/${y}`;
       }
     });
-
-    // B. Typing Logic (12082025 -> 12/08/2025)
     mDate.addEventListener('input', (e) => {
-      let v = e.target.value.replace(/\D/g, ''); // strip non-digits
+      let v = e.target.value.replace(/\D/g, ''); 
       if (v.length >= 5) v = `${v.slice(0,2)}/${v.slice(2,4)}/${v.slice(4,8)}`;
       else if (v.length >= 3) v = `${v.slice(0,2)}/${v.slice(2)}`;
       e.target.value = v;
     });
+    // Enter Key
+    [mDate, container.querySelector('#mClient'), container.querySelector('#mPet')].forEach(input => {
+      input.addEventListener('keyup', (e) => { if (e.key === 'Enter') searchBtn.click(); });
+    });
 
-    // C. Pad Logic on Blur (1/1/25 -> 01/01/2025)
-    const normalizeDate = () => {
-      const raw = mDate.value.trim();
-      if (!raw) return;
-      const parts = raw.split('/');
-      if (parts.length === 3) {
-        let m = parts[0];
-        let d = parts[1];
-        let y = parts[2];
-        
-        // Pad Single Digits
-        if (m.length === 1) m = '0' + m;
-        if (d.length === 1) d = '0' + d;
-        
-        // Handle Short Year (25 -> 2025)
-        if (y.length === 2) y = '20' + y;
-        
-        mDate.value = `${m}/${d}/${y}`;
-      }
-    };
-    mDate.addEventListener('change', normalizeDate);
-    mDate.addEventListener('blur', normalizeDate);
-
-    // ─── 2. Trigger Search on Enter ───
-    [mDate, mClient, mPet].forEach(input => {
-      input.addEventListener('keyup', (e) => {
-        if (e.key === 'Enter') searchBtn.click();
+    searchBtn.addEventListener('click', () => {
+      results.innerHTML = `<div class="spinner"></div>`;
+      google.script.run.withSuccessHandler(res => {
+        if (!res || !res.ok) { results.innerHTML = '<p>Error.</p>'; return; }
+        renderResults(res.rows || []);
+      }).apiSearchAppointments({
+        date: mDate.value.trim(),
+        client: container.querySelector('#mClient').value.trim(),
+        pet: container.querySelector('#mPet').value.trim()
       });
     });
 
-    // ─── 3. Search Button Listener ───
-    searchBtn.addEventListener('click', () => {
-        normalizeDate(); // Ensure date is formatted before sending
-        
-        results.innerHTML = `<div class="spinner"></div>`;
-        results.scrollIntoView({ behavior: 'smooth' });
-
-        google.script.run
-        .withSuccessHandler(res => {
-            const spinner = results.querySelector('.spinner');
-            if (spinner) spinner.remove();
-
-            if (!res || !res.ok) {
-                results.innerHTML = `<p class="error">${res?.error || 'Search failed.'}</p>`;
-                results.scrollIntoView({ behavior: 'smooth' });
-                return;
-            }
-
-            renderResults(results, res.rows || []);
-        })
-        .withFailureHandler(err => {
-            console.error(err);
-            const spinner = results.querySelector('.spinner');
-            if (spinner) spinner.remove();
-            results.innerHTML = `<p class="error">Server error during search.</p>`;
-            results.scrollIntoView({ behavior: 'smooth' });
-        })
-        .apiSearchAppointments({
-            date: mDate.value.trim(),
-            client: mClient.value.trim(),
-            pet: mPet.value.trim()
-        });
-    });
-
-    // ─── 4. Clear button ───
     container.querySelector('#mClearBtn').addEventListener('click', () => {
-        mDate.value = '';
-        mDatePicker.value = ''; // Clear picker too
-        mClient.value = '';
-        mPet.value = '';
-        results.innerHTML = '';
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+       mDate.value = ''; mDatePicker.value = ''; results.innerHTML = '';
     });
-  }
 
-  // ———————————————————————————————————
-  // Results list (cards)
-    function renderResults(target, rows) {
-    // 🔹 Remove any active spinner first
-    const spinner = target.querySelector('.spinner');
-    if (spinner) spinner.remove();
+    function renderResults(rows) {
+      results.innerHTML = '';
+      if(!rows.length) { results.innerHTML = '<p>No matches.</p>'; return; }
+      
+      const grid = document.createElement('div');
+      grid.className = 'card-grid';
+      results.appendChild(grid);
 
-    // 🔹 Smooth scroll user to results area
-    target.scrollIntoView({ behavior: 'smooth' });
-
-    if (!rows.length) {
-        target.innerHTML = `<p style="opacity:.7;">No matching appointments found.</p>`;
-        return;
-    }
-
-    // 🔹 Build grid normally
-    const grid = document.createElement('div');
-    grid.className = 'card-grid';
-    target.innerHTML = '';
-    target.appendChild(grid);
-
-    rows.forEach(r => {
+      rows.forEach(r => {
         const disabled = !r.editable;
         const card = document.createElement('div');
         card.className = 'card';
-        if (disabled) card.style.opacity = 0.6;
-
+        if(disabled) card.style.opacity = 0.6;
         card.innerHTML = `
-        <div style="font-weight:600; margin-bottom:4px;">${r.firstName} ${r.lastName} — ${r.petName}</div>
-        <div>${r.date} ${r.time || ''}</div>
-        <div>Status: ${r.status || '—'}</div>
-        <div style="font-size:.85rem; opacity:.65;">ID: ${r.id}</div>
-        ${disabled ? `<div class="success-message" style="margin-top:.6rem; background:#fffbea; color:#92400e;">Not editable (on or before today)</div>` : ``}
+          <div style="font-weight:600;">${r.firstName} ${r.lastName} — ${r.petName}</div>
+          <div>${r.date} ${r.time}</div>
+          <div>Status: ${r.status}</div>
+          ${disabled ? '<small style="color:#991b1b;">Past Date</small>' : ''}
         `;
-
-        if (!disabled) {
-        card.style.cursor = 'pointer';
-        card.addEventListener('click', () => openEditForm(target.parentElement, r));
+        if(!disabled) {
+          card.style.cursor = 'pointer';
+          card.onclick = () => selectAppointment(r);
         }
-
         grid.appendChild(card);
-    });
+      });
     }
 
-  // ———————————————————————————————————
-  // Edit Form (same fields as scheduling, prefilled)
-  function openEditForm(container, row) {
-    // 🔹 NAV FIX: Intercept "Back" to return to Search
-    if (window.SPCA && window.SPCA.setBackHandler) {
-        window.SPCA.setBackHandler(() => renderSearch(container));
+    function selectAppointment(row) {
+      results.innerHTML = '<div class="spinner"></div>';
+      // Fetch full context from backend
+      google.script.run.withSuccessHandler(res => {
+         if(!res.ok) { alert('Error fetching data'); return; }
+         
+         TX.apptId = row.id;
+         TX.originalAppt = res.appointment; // Master Sheet Row Data
+         TX.owner = res.owner;              // Central DB Owner
+         TX.pet = res.pet;                  // Central DB Pet
+         
+         // Pre-fill display name in mode selector
+         container.querySelector('#selApptDesc').textContent = 
+            `${TX.owner.firstName} ${TX.owner.lastName} — ${TX.pet.name} (${row.date} @ ${row.time})`;
+         
+         nextStep('step-search', 'step-mode');
+      }).apiGetModifyContext(row.id);
     }
-
-    container.innerHTML = `
-      <div class="schedule-step">
-        <h2>Edit Appointment</h2>
-        <div id="formFields"></div>
-        <div class="actions">
-          <button id="mSave" class="btn">Save</button>
-          <button id="mCancel" class="btn secondary">Cancel</button>
-        </div>
-        <div id="mConfirm" class="hidden"><div class="spinner"></div></div>
-      </div>
-    `;
-
-    const formHost = container.querySelector('#formFields');
-    // Render the same form structure used in Schedule flow,
-    // but pre-fill with row values (we only render a reduced set here for brevity).
-    formHost.innerHTML = `
-      <div class="field"><label>First Name</label><input id="firstName" value="${safe(row.firstName)}"></div>
-      <div class="field"><label>Last Name</label><input id="lastName" value="${safe(row.lastName)}"></div>
-      <div class="field"><label>Email</label><input id="email" value="${safe(row.email)}"></div>
-      <div class="field"><label>Phone Number</label><input id="phone" value="${safe(row.phone)}"></div>
-
-      <hr class="divider">
-      <h3>Address</h3>
-      <div class="field"><label>Address</label><input id="address" value="${safe(row.address)}"></div>
-      <div class="field"><label>City</label><input id="city" value="${safe(row.city)}"></div>
-      <div class="field">
-        <label>State</label>
-        <select id="state">${getStatesOptions(row.state)}</select>
-      </div>
-      <div class="field"><label>Zip Code</label><input id="zip" value="${safe(row.zip)}"></div>
-
-      <hr class="divider">
-      <h3>Pet</h3>
-      <div class="field"><label>Pet Name</label><input id="petName" value="${safe(row.petName)}"></div>
-      <div class="field">
-        <label>Species</label>
-        <select id="species">
-          <option value="">— Select —</option>
-          ${['Canine','Feline','Other'].map(o => `<option ${row.species===o?'selected':''}>${o}</option>`).join('')}
-        </select>
-      </div>
-      <div class="field"><label>Primary Breed</label><input id="breedOne" value="${safe(row.breedOne)}"></div>
-      <div class="field"><label>Secondary Breed</label><input id="breedTwo" value="${safe(row.breedTwo)}"></div>
-      <div class="field"><label>Color</label><input id="color" value="${safe(row.color)}"></div>
-      <div class="field"><label>Color Pattern</label><input id="colorPattern" value="${safe(row.colorPattern)}"></div>
-
-      <div class="field">
-        <label>Sex</label>
-        <select id="sex">
-          <option value="">— Select —</option>
-          ${['Male','Female'].map(o => `<option ${row.sex===o?'selected':''}>${o}</option>`).join('')}
-        </select>
-      </div>
-      <div class="field">
-        <label>Spayed or Neutered</label>
-        <select id="altered">
-          <option value="">— Select —</option>
-          ${['Spayed','Neutered','No','Unknown'].map(o => `<option ${row.altered===o?'selected':''}>${o}</option>`).join('')}
-        </select>
-      </div>
-
-      <div class="field"><label>Age</label><input id="age" value="${safe(row.age)}" placeholder="e.g., 2 years or 8 months"></div>
-
-      <div class="field">
-        <label>Vaccines Needed</label>
-        <div id="vaccines" class="option-list"></div>
-      </div>
-
-      <div class="field">
-        <label>Additional Services</label>
-        <div id="additionalServices" class="option-list"></div>
-      </div>
-
-      <div class="field">
-        <label>Previous Vet Records?</label>
-        <div class="option-buttons-left">
-          ${radio('hasVetRecords','Yes', row.prevRecords==='Yes')}
-          ${radio('hasVetRecords','No',  row.prevRecords!=='Yes')}
-        </div>
-      </div>
-
-      <div class="field"><label>Vet Office Name</label><input id="vetOffice" value="${safe(row.vetOffice)}"></div>
-
-      <div class="field"><label>Allergies or Sensitivities</label><input id="allergies" value="${safe(row.allergies)}" placeholder="None known"></div>
-      <div class="field"><label>Approx. Weight (lbs)</label><input id="weight" type="number" step="0.1" value="${safe(row.weight)}"></div>
-      <div class="field"><label>Additional Notes</label><textarea id="notes" rows="3">${safe(row.notes)}</textarea></div>
-
-      <div class="field">
-        <label>Appointment Status</label>
-        <select id="status">
-          ${['Available','Scheduled','Reserved','Completed','Cancelled'].map(o => `<option ${row.status===o?'selected':''}>${o}</option>`).join('')}
-        </select>
-      </div>
-    `;
-
-    // hydrate vaccines & additional services with checks
-    google.script.run.withSuccessHandler(res => {
-      if (!res || !res.ok) return;
-      const chosen = csvToArray(row.vaccines || '');
-      const host = container.querySelector('#vaccines');
-      const speciesVal = row.species;
-      const list = speciesVal === 'Canine' ? (res.canine || []) : speciesVal === 'Feline' ? (res.feline || []) : [];
-      host.innerHTML = list.map(v => `
-        <label class="radio-option">
-          <input type="checkbox" name="vaccine" value="${v}" ${chosen.includes(v) ? 'checked':''}> ${v}
-        </label>
-      `).join('');
-    }).apiGetVaccineLists();
-
-    google.script.run.withSuccessHandler(res => {
-      if (!res || !res.ok) return;
-      const chosen = csvToArray(row.additionalServices || '');
-      const host = container.querySelector('#additionalServices');
-      host.innerHTML = (res.services || []).map(s => `
-        <label class="radio-option">
-          <input type="checkbox" name="service" value="${s}" ${chosen.includes(s) ? 'checked':''}> ${s}
-        </label>
-      `).join('');
-    }).apiGetAdditionalServices();
-
-    // Save / Cancel
-    const confirmBlock = container.querySelector('#mConfirm');
-    container.querySelector('#mCancel').addEventListener('click', () => {
-        renderSearch(container);
-    });
-
-    container.querySelector('#mSave').addEventListener('click', e => {
-        e.target.disabled = true; // ✅ Prevent double-click
-        const payload = collectPayload(container);
-        showTransportModal(container, row, payload);
-    });
   }
 
-  function collectPayload(container) {
-    const get = id => container.querySelector('#' + id)?.value?.trim() || '';
-    const checkedVals = (name) => [...container.querySelectorAll(`input[name="${name}"]:checked`)].map(el => el.value).join(', ');
+  // ─── MODULE: RESCHEDULE FLOW ───────────────────────────
+  function setupRescheduleFlow(container, TX, nextStep) {
+    // Mode Selection
+    container.querySelector('#btnReschedule').onclick = () => {
+       TX.mode = 'RESCHEDULE';
+       nextStep('step-mode', 'step-type');
+    };
+    container.querySelector('#btnUpdateOnly').onclick = () => {
+       TX.mode = 'UPDATE';
+       populateOwnerForm(container, TX);
+       nextStep('step-mode', 'step-owner');
+    };
 
-    return {
-      'First Name': get('firstName'),
-      'Last Name': get('lastName'),
-      'Email': get('email'),
-      'Phone Number': get('phone'),
-      'Address': get('address'),
-      'City': get('city'),
-      'State': get('state'),
-      'Zip Code': get('zip'),
-      'Pet Name': get('petName'),
-      'Species': get('species'),
-      'Sex': get('sex'),
-      'Spayed or Neutered': get('altered'),
-      'Age': get('age'),
-      'Breed One': get('breedOne'),
-      'Breed Two': get('breedTwo'),
-      'Color': get('color'),
-      'Color Pattern': get('colorPattern'),
-      'Vaccines Needed': checkedVals('vaccine'),
-      'Additional Services': checkedVals('service'),
-      'Allergies or Sensitivities': get('allergies') || 'None known',
-      'Weight': get('weight'),
-      'Notes': get('notes'),
-      'Previous Vet Records': (container.querySelector('input[name="hasVetRecords"]:checked')?.value || 'No'),
-      'Vet Office Name': get('vetOffice'),
-      'Appointment Status': get('status')
+    // Type Selection
+    container.querySelectorAll('#step-type button').forEach(b => {
+      b.addEventListener('click', () => {
+        TX.newType = b.dataset.type;
+        nextStep('step-type', 'step-slots');
+        loadSlots();
+      });
+    });
+
+    let slotsCount = 6;
+    function loadSlots() {
+      const grid = container.querySelector('#slotGrid');
+      grid.innerHTML = '<div class="spinner"></div>';
+      google.script.run.withSuccessHandler(res => {
+        grid.innerHTML = '';
+        if(!res.ok || !res.slots.length) { grid.innerHTML = '<p>No slots.</p>'; return; }
+        res.slots.forEach(s => {
+          const card = document.createElement('div');
+          card.className = 'card';
+          card.innerHTML = `
+            <div style="font-weight:700;">${TX.newType}</div>
+            <div>${s.day} ${s.date}</div>
+            <div>${s.time}</div>
+            <div style="font-size:0.8rem;">Grant: ${s.grant}</div>
+          `;
+          card.onclick = () => {
+             TX.newSlot = s;
+             TX.isRogue = false;
+             populateOwnerForm(container, TX);
+             nextStep('step-slots', 'step-owner');
+          };
+          grid.appendChild(card);
+        });
+      }).apiGetAvailableSlots(TX.newType, slotsCount);
+    }
+    
+    container.querySelector('#showMoreBtn').onclick = () => { slotsCount += 6; loadSlots(); };
+    
+    // Rogue Logic
+    container.querySelector('#rogueBtn').onclick = () => {
+       TX.isRogue = true;
+       nextStep('step-slots', 'step-rogue');
+    };
+    
+    // Rogue Date formatting
+    const rDate = container.querySelector('#rDate');
+    const rTime = container.querySelector('#rTime');
+    rDate.addEventListener('input', (e) => {
+        let v = e.target.value.replace(/\D/g, '');
+        if (v.length >= 5) v = `${v.slice(0,2)}/${v.slice(2,4)}/${v.slice(4,8)}`;
+        else if (v.length >= 3) v = `${v.slice(0,2)}/${v.slice(2)}`;
+        e.target.value = v;
+    });
+    rTime.addEventListener('blur', (e) => {
+        let v = e.target.value.replace(/\D/g, ''); 
+        if (v.length > 0) {
+            if (v.length === 1) v = `0${v}:00`;       
+            else if (v.length === 2) v = `${v}:00`;   
+            else if (v.length === 3) v = `0${v.slice(0,1)}:${v.slice(1)}`; 
+            else if (v.length === 4) v = `${v.slice(0,2)}:${v.slice(2)}`; 
+            e.target.value = v;
+        }
+    });
+
+    container.querySelector('#rNext').onclick = () => {
+       const d = container.querySelector('#rDate').value;
+       const t = container.querySelector('#rTime').value;
+       if(!d || !t) { alert('Date/Time required'); return; }
+       
+       TX.rogueData = { date: d, time: t, ampm: container.querySelector('#rAmPm').value };
+       populateOwnerForm(container, TX);
+       nextStep('step-rogue', 'step-owner');
     };
   }
 
-  // ———————————————————————————————————
-  // Transport & Upload link modal (for modify flow)
-  // ———————————————————————————————————
-  // Transport & Upload link modal (for modify flow)
-  function showTransportModal(container, row, payload) {
+  // ─── MODULE: SHARED FORMS ──────────────────────────────
+  function setupForms(container, TX, nextStep) {
+    
+    // --- OWNER ---
+    container.querySelector('#btnSaveOwner').onclick = () => {
+        const payload = getOwnerFormData(container);
+        const required = ['First Name', 'Last Name', 'Phone', 'Email'];
+        if(required.some(k => !payload[k])) { alert('Fill all fields'); return; }
+
+        const currentJson = JSON.stringify(payload);
+        if (currentJson === TX.originalOwnerState) {
+            // No changes, skip save
+            populatePetForm(container, TX);
+            nextStep('step-owner', 'step-pet');
+        } else {
+            // Save changes
+            const btn = container.querySelector('#btnSaveOwner');
+            btn.textContent = 'Saving...';
+            btn.disabled = true;
+            google.script.run.withSuccessHandler(id => {
+               btn.textContent = 'Save & Review Pet';
+               btn.disabled = false;
+               TX.owner = { ...payload, ownerId: id }; // update local
+               populatePetForm(container, TX);
+               nextStep('step-owner', 'step-pet');
+            }).apiUpsertOwner(payload, TX.scheduler);
+        }
+    };
+
+    // --- PET ---
+    container.querySelector('#btnSavePet').onclick = () => {
+        const payload = getPetFormData(container);
+        // Note: We don't have snapshotting for pet yet, so we just upsert.
+        // It's low cost.
+        const btn = container.querySelector('#btnSavePet');
+        btn.textContent = 'Saving...';
+        btn.disabled = true;
+        
+        google.script.run.withSuccessHandler(id => {
+           btn.textContent = 'Save & Review Appointment';
+           btn.disabled = false;
+           TX.pet = { ...payload, petId: id };
+           populateApptDetails(container, TX);
+           nextStep('step-pet', 'step-details');
+        }).apiUpsertPet(payload, TX.scheduler);
+    };
+
+    // --- DETAILS ---
+    container.querySelector('#btnFinalize').onclick = () => {
+        showTransportModal(container, TX);
+    };
+  }
+
+  // ─── HELPERS: DATA POPULATION ──────────────────────────
+  function populateOwnerForm(container, TX) {
+    const d = TX.owner || {};
+    const set = (id, val) => container.querySelector('#'+id).value = val || '';
+    
+    set('ownerId', d.ownerId);
+    set('oFirst', d.firstName);
+    set('oLast', d.lastName);
+    set('oPhone', d.phone);
+    set('oEmail', d.email);
+    set('oAddress', d.address);
+    set('oCity', d.city);
+    set('oState', d.state);
+    set('oZip', d.zip);
+
+    TX.originalOwnerState = JSON.stringify(getOwnerFormData(container));
+  }
+
+  function getOwnerFormData(container) {
+    return {
+      'Owner ID': container.querySelector('#ownerId').value,
+      'First Name': container.querySelector('#oFirst').value.trim(),
+      'Last Name': container.querySelector('#oLast').value.trim(),
+      'Phone': container.querySelector('#oPhone').value.trim(),
+      'Email': container.querySelector('#oEmail').value.trim(),
+      'Street Address': container.querySelector('#oAddress').value.trim(),
+      'City': container.querySelector('#oCity').value.trim(),
+      'State': container.querySelector('#oState').value.trim(),
+      'Zip Code': container.querySelector('#oZip').value.trim()
+    };
+  }
+
+  function populatePetForm(container, TX) {
+    const p = TX.pet || {};
+    const set = (id, val) => container.querySelector('#'+id).value = val || '';
+    set('petId', p.petId);
+    set('pName', p.name);
+    set('pSpecies', p.species);
+    set('pBreed1', p.breed);
+    set('pBreed2', p.breed2); // Might be missing in Central obj, that's ok
+    set('pColor', p.color);
+    set('pPattern', p.pattern);
+    set('pSex', p.sex);
+    set('pFixed', p.fixed);
+    set('pAge', p.age);
+    set('pWeight', p.weight);
+  }
+
+  function getPetFormData(container) {
+    return {
+      'Pet ID': container.querySelector('#petId').value,
+      'Owner ID': document.querySelector('#ownerId').value, // safe ref
+      'Pet Name': container.querySelector('#pName').value,
+      'Species': container.querySelector('#pSpecies').value,
+      'Primary Breed': container.querySelector('#pBreed1').value,
+      'Secondary Breed': container.querySelector('#pBreed2').value,
+      'Color': container.querySelector('#pColor').value,
+      'Color Pattern': container.querySelector('#pPattern').value,
+      'Sex': container.querySelector('#pSex').value,
+      'Altered': container.querySelector('#pFixed').value,
+      'Age': container.querySelector('#pAge').value,
+      'Weight': container.querySelector('#pWeight').value
+    };
+  }
+
+  function populateApptDetails(container, TX) {
+    // 1. Summary Header
+    let type = (TX.mode === 'RESCHEDULE') ? TX.newType : TX.originalAppt['Appointment Type'];
+    let timeInfo = '';
+    if (TX.mode === 'RESCHEDULE') {
+       timeInfo = TX.isRogue 
+         ? `${TX.rogueData.date} @ ${TX.rogueData.time}` 
+         : `${TX.newSlot.day} ${TX.newSlot.date} @ ${TX.newSlot.time}`;
+    } else {
+       // Update Only: Keep original date/time
+       // Note: originalAppt keys might be "Date" vs "date" depending on how rpc returns it. 
+       // readAllAppointments returns keyed by Header Name.
+       timeInfo = `${TX.originalAppt['Date']} @ ${TX.originalAppt['Time']}`;
+    }
+    
+    container.querySelector('#summaryText').innerHTML = `
+       <strong>${type}</strong><br>
+       ${timeInfo}<br>
+       ${TX.owner['First Name']} ${TX.owner['Last Name']} with ${TX.pet['Pet Name']}
+    `;
+
+    // 2. Hydrate Checkboxes from Original Appt Data
+    const raw = TX.originalAppt;
+    const csvToArray = (s) => (s || '').split(',').map(x => x.trim()).filter(Boolean);
+    const chosenVac = csvToArray(raw['Vaccines Needed']);
+    const chosenSvc = csvToArray(raw['Additional Services']);
+
+    // Fetch lists again to ensure options are fresh
+    google.script.run.withSuccessHandler(res => {
+       const lists = { canine: res.canine, feline: res.feline };
+       const opts = (TX.pet['Species'] === 'Canine') ? lists.canine : lists.feline;
+       container.querySelector('#vaccines').innerHTML = opts.map(v => 
+         `<label class="radio-option"><input type="checkbox" name="vaccine" value="${v}" ${chosenVac.includes(v)?'checked':''}> ${v}</label>`
+       ).join('');
+    }).apiGetVaccineLists();
+
+    google.script.run.withSuccessHandler(res => {
+       container.querySelector('#services').innerHTML = res.services.map(s => 
+         `<label class="radio-option"><input type="checkbox" name="service" value="${s}" ${chosenSvc.includes(s)?'checked':''}> ${s}</label>`
+       ).join('');
+    }).apiGetAdditionalServices();
+
+    // 3. Text Fields
+    container.querySelector('#aVet').value = raw['Vet Office Name'] || '';
+    container.querySelector('#aAllergy').value = raw['Allergies or Sensitivities'] || '';
+    container.querySelector('#aNotes').value = raw['Notes'] || '';
+    
+    const recVal = raw['Previous Vet Records'] || 'No';
+    const recRadio = container.querySelector(`input[name="hasRec"][value="${recVal}"]`);
+    if(recRadio) recRadio.checked = true;
+  }
+
+  function getApptPayload(container, TX) {
+     return {
+        // Owner/Pet data is implicitly updated in Central, but we send it again for Master Sheet consistency
+        'First Name': TX.owner['First Name'],
+        'Last Name': TX.owner['Last Name'],
+        'Phone Number': TX.owner['Phone'],
+        'Email': TX.owner['Email'],
+        'Street Address': TX.owner['Street Address'],
+        'City': TX.owner['City'],
+        'State': TX.owner['State'],
+        'Zip Code': TX.owner['Zip Code'],
+        
+        'Pet Name': TX.pet['Pet Name'],
+        'Species': TX.pet['Species'],
+        'Breed One': TX.pet['Primary Breed'],
+        'Breed Two': TX.pet['Secondary Breed'],
+        'Color': TX.pet['Color'],
+        'Color Pattern': TX.pet['Color Pattern'],
+        'Sex': TX.pet['Sex'],
+        'Spayed or Neutered': TX.pet['Altered'],
+        'Age': TX.pet['Age'],
+        'Weight': TX.pet['Weight'],
+
+        // Appointment Specifics
+        'Notes': container.querySelector('#aNotes').value,
+        'Vet Office Name': container.querySelector('#aVet').value,
+        'Allergies or Sensitivities': container.querySelector('#aAllergy').value,
+        'Vaccines Needed': [...container.querySelectorAll('input[name="vaccine"]:checked')].map(el => el.value).join(', '),
+        'Additional Services': [...container.querySelectorAll('input[name="service"]:checked')].map(el => el.value).join(', '),
+        'Previous Vet Records': container.querySelector('input[name="hasRec"]:checked')?.value || 'No'
+     };
+  }
+
+  // ─── TRANSPORT MODAL ─────────────────────────────────
+  function showTransportModal(container, TX) {
     document.querySelectorAll('.modal').forEach(m => m.remove());
     const modal = document.createElement('div');
     modal.className = 'modal';
-    const prevYes = (payload['Previous Vet Records'] === 'Yes');
-
-    const currentTransport = row.transportNeeded || '';
-    const currentTextHtml = currentTransport 
-      ? `<p style="margin-top:-0.5rem; margin-bottom:1.25rem; color:#4b5563; font-size:0.95rem; background:#f3f4f6; display:inline-block; padding:0.25rem 0.75rem; border-radius:8px;">
-           Current Selection: <strong>${currentTransport}</strong>
-         </p>` 
-      : '';
+    
+    // Check if "Yes" was selected in the form
+    const hasVetRecords = container.querySelector('input[name="hasRec"]:checked')?.value === 'Yes';
+    
+    // Determine previous transport setting from original appointment
+    const prevTrans = TX.originalAppt['Transportation Needed'] || 'No';
+    const transportMsg = `<p style="margin-top:-0.5rem; margin-bottom:1.25rem; color:#4b5563; font-size:0.9rem; background:#f3f4f6; display:inline-block; padding:0.25rem 0.75rem; border-radius:8px;">
+           Currently: <strong>${prevTrans}</strong>
+         </p>`;
 
     modal.innerHTML = `
       <div class="modal-content">
-        <p style="margin-bottom:0.5rem;">Does this client require transportation assistance for this appointment?</p>
-        ${currentTextHtml}
-        
+        <p style="margin-bottom:0.5rem;">Transportation assistance needed?</p>
+        ${transportMsg}
         <div class="actions transport-actions">
-          <button class="btn secondary transportBtn" data-transport="Yes">Yes</button>
-          <button class="btn secondary transportBtn" data-transport="No">No</button>
+          <button class="btn secondary transportBtn" data-val="Yes">Yes</button>
+          <button class="btn secondary transportBtn" data-val="No">No</button>
         </div>
-        ${prevYes ? `
+        
+        ${hasVetRecords ? `
           <hr class="divider">
-          <p>Please use the link below to upload any additional records you have at this time. Previous uploads will not be deleted.</p>
-          <p><a href="https://script.google.com/macros/s/AKfycbxb1_Oha9qhWnaOMeUuFHSSEe5E7IoCPG2JPdkCn4Jmju-2VYiQzOobecO9DwKcC_pf/exec" target="_blank" rel="noopener">Open Vet Records Uploader</a></p>
+          <p>Previous Vet Records Action:</p>
+          <div class="actions record-actions">
+             <button id="btnAlready" class="btn secondary recordBtn">Already Provided</button>
+             <button id="btnUpload" class="btn secondary recordBtn">Upload</button>
+             <button id="btnRequest" class="btn secondary recordBtn">Request</button>
+             <input type="file" id="uploadInput" hidden multiple>
+          </div>
+          <div id="toast" style="margin-top:10px;"></div>
         ` : ``}
+        
         <hr class="divider">
         <div class="actions">
-          <button id="mSubmit" class="btn" disabled>Submit</button>
-          <button id="mCancelModal" class="btn secondary">Cancel</button>
+           <button id="btnFinalSubmit" class="btn" disabled>Submit Changes</button>
+           <button id="btnCancelModal" class="btn secondary">Cancel</button>
         </div>
       </div>
     `;
     document.body.appendChild(modal);
 
-    let chosenTransport = '';
+    let chosenTransport = null;
     modal.querySelectorAll('.transportBtn').forEach(b => {
-      b.addEventListener('click', () => {
-        modal.querySelectorAll('.transportBtn').forEach(x => {
-            x.classList.remove('selected');
-            x.classList.add('secondary');
-        });
-        
-        b.classList.remove('secondary');
-        b.classList.add('selected');
-        
-        chosenTransport = b.dataset.transport;
-        modal.querySelector('#mSubmit').disabled = !chosenTransport;
-      });
+       b.onclick = () => {
+          modal.querySelectorAll('.transportBtn').forEach(x => {
+             x.classList.remove('selected'); x.classList.add('secondary');
+          });
+          b.classList.remove('secondary'); b.classList.add('selected');
+          chosenTransport = b.dataset.val;
+          modal.querySelector('#btnFinalSubmit').disabled = false;
+       };
     });
 
-    modal.querySelector('#mCancelModal').addEventListener('click', () => modal.remove());
-    modal.querySelector('#mSubmit').addEventListener('click', () => {
-      modal.querySelector('#mSubmit').classList.add('loading');
-      google.script.run
-        .withSuccessHandler(res => {
-          modal.remove();
-          if (!res || !res.ok) {
-            container.innerHTML = `<p class="error">${res?.error || 'Update failed.'}</p>`;
-            return;
+    const toast = (msg) => modal.querySelector('#toast').innerHTML = `<small style="color:green;">${msg}</small>`;
+
+    if(hasVetRecords) {
+        modal.querySelector('#btnAlready').onclick = () => {
+           toast('Marked as provided.');
+        };
+        modal.querySelector('#btnRequest').onclick = () => {
+           google.script.run.apiSendVetRecordsRequest(TX.owner.email, '', TX.owner.firstName, TX.pet.name);
+           toast('Request sent.');
+        };
+        modal.querySelector('#btnUpload').onclick = () => {
+           modal.querySelector('#uploadInput').click();
+        };
+        modal.querySelector('#uploadInput').onchange = (e) => {
+           // Basic upload trigger (could be enhanced)
+           toast('Files selected.');
+        };
+    }
+
+    modal.querySelector('#btnCancelModal').onclick = () => modal.remove();
+    
+    modal.querySelector('#btnFinalSubmit').onclick = () => {
+       const btn = modal.querySelector('#btnFinalSubmit');
+       btn.classList.add('loading');
+       
+       const payload = getApptPayload(container, TX);
+       payload['Transportation Needed'] = chosenTransport;
+
+       // EXECUTE
+       if(TX.mode === 'UPDATE') {
+          google.script.run.withSuccessHandler(() => showSuccess(container, 'Appointment Updated'))
+            .apiUpdateAppointment(TX.apptId, payload, TX.scheduler, chosenTransport);
+       } else {
+          // RESCHEDULE
+          const newSlotId = TX.isRogue ? null : TX.newSlot.id;
+          const newType = TX.newType; // Surgery/Wellness
+          // If Rogue, pass date/time manually in payload, backend handles it
+          if(TX.isRogue) {
+             payload['Date'] = TX.rogueData.date;
+             payload['Time'] = TX.rogueData.time;
+             payload['AM or PM'] = TX.rogueData.ampm;
+          } else {
+             payload['Date'] = TX.newSlot.date;
+             payload['Time'] = TX.newSlot.time;
           }
-          container.innerHTML = `
-            <div style="text-align:center; padding:2rem;">
-              <div style="font-size:3rem; margin-bottom:1rem;">✅</div>
-              <h2>Appointment Updated!</h2>
-              <div class="actions" style="justify-content:center; margin-top:1.5rem;">
-                <button class="btn" id="mBackToSearch">Back to search</button>
-              </div>
-            </div>
-          `;
-          container.querySelector('#mBackToSearch').addEventListener('click', () => renderModifyFlow(container));
-        })
-        .withFailureHandler(err => {
-          modal.remove();
-          container.innerHTML = `<p class="error">Server error updating appointment.</p>`;
-          console.error(err);
-        })
-        .apiUpdateAppointment(row.id, payload, SCHEDULER(), chosenTransport);
-    });
+
+          google.script.run.withSuccessHandler(() => showSuccess(container, 'Appointment Rescheduled'))
+            .apiRescheduleAppointment(TX.apptId, newSlotId, newType, payload, TX.scheduler, TX.isRogue, TX.rogueData);
+       }
+       modal.remove();
+    };
   }
 
-  // ———————————————————————————————————
-  // Small helpers
-  function csvToArray(s) {
-    return (s || '').split(',').map(x => x.trim()).filter(Boolean);
+  function showSuccess(container, title) {
+     container.querySelector('#step-details').classList.add('hidden');
+     container.innerHTML = `
+        <div style="text-align:center; padding:3rem;">
+           <div style="font-size:4rem;">✅</div>
+           <h2>${title}</h2>
+           <div class="actions" style="justify-content:center; margin-top:2rem;">
+              <button class="btn" onclick="window.renderModifyFlow(document.querySelector('#view-modify'))">Return to Search</button>
+           </div>
+        </div>
+     `;
   }
-  function safe(v){ return (v==null?'':String(v).replace(/"/g,'&quot;')); }
-  function radio(name, val, checked){ return `<label><input type="radio" name="${name}" value="${val}" ${checked?'checked':''}> ${val}</label>`; }
-  function getStatesOptions(current) {
-    const list = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
-    return list.map(s => `<option ${current===s?'selected':''}>${s}</option>`).join('');
-  }
+
 })();
 </script>
