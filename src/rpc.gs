@@ -500,7 +500,7 @@ function apiGetAdditionalServices() {
         'Nail Trim', 
         'Dewormer', 
         'Hernia Repair',
-        'Flea/Tick Prevention',
+        'Flea/Tick Prevention', // 🔹 FIX: Added missing comma
         'Dental'
       ]
     };
