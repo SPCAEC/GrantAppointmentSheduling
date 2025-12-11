@@ -90,6 +90,16 @@ function apiBookAppointment(payload, type, date, time, appointmentId, schedulerN
     if (!payload || typeof payload !== 'object') throw new Error('Invalid payload');
 
     payload = normalizePayload_(payload);
+    
+    // 🔹 FIX: Explicitly ensure IDs are mapped to the correct Sheet Header Keys
+    // This handles cases where frontend sends 'ownerId' or 'Owner ID' mixed
+    if (payload['Owner ID'] || payload['ownerId']) {
+        payload[CFG.COLS.OWNER_ID] = payload['Owner ID'] || payload['ownerId'];
+    }
+    if (payload['Pet ID'] || payload['petId']) {
+        payload[CFG.COLS.PET_ID] = payload['Pet ID'] || payload['petId'];
+    }
+
     const data = readAllAppointments_();
     
     let rowIndex = -1;
@@ -126,8 +136,8 @@ function apiBookAppointment(payload, type, date, time, appointmentId, schedulerN
       'Date': date,
       'Time': time,
       'AM or PM': payload['AM or PM'] || '',
-      'Owner ID': payload['Owner ID'] || '',
-      'Pet ID': payload['Pet ID'] || '',
+      'Owner ID': payload[CFG.COLS.OWNER_ID] || '',
+      'Pet ID': payload[CFG.COLS.PET_ID] || '',
       'Notes': payload['Notes'] || '',
       'Transportation Needed': payload['Transportation Needed'] || '',
       'Scheduled By': schedulerName
@@ -151,6 +161,10 @@ function apiUpdateAppointment(appointmentId, payload, updatedBy, transportNeeded
     if (!appointmentId) throw new Error('Missing ID');
     payload = normalizePayload_(payload);
     
+    // 🔹 FIX: Explicit Map
+    if (payload['Owner ID'] || payload['ownerId']) payload[CFG.COLS.OWNER_ID] = payload['Owner ID'] || payload['ownerId'];
+    if (payload['Pet ID'] || payload['petId']) payload[CFG.COLS.PET_ID] = payload['Pet ID'] || payload['petId'];
+
     const all = readAllAppointments_();
     const idx = all.findIndex(r => String(r[CFG.COLS.ID] || '').trim() === String(appointmentId).trim());
     if (idx < 0) throw new Error('Not found');
@@ -172,12 +186,14 @@ function apiUpdateAppointment(appointmentId, payload, updatedBy, transportNeeded
   });
 }
 
-// ─── ROGUE / CANCEL / OUTCOME / SEARCH ────────────────
-
 function apiCreateRogueAppointment(payload) {
   return apiResponse_(() => {
     if (!payload) throw new Error('Missing payload');
     
+    // 🔹 FIX: Explicit Map
+    if (payload['Owner ID'] || payload['ownerId']) payload[CFG.COLS.OWNER_ID] = payload['Owner ID'] || payload['ownerId'];
+    if (payload['Pet ID'] || payload['petId']) payload[CFG.COLS.PET_ID] = payload['Pet ID'] || payload['petId'];
+
     const newId = getNextAppointmentId_();
     const zip = String(payload['Zip Code'] || '').trim();
     const grant = (zip.includes('14215') || zip.includes('14211')) ? 'PFL' : 'Incubator';
@@ -217,8 +233,8 @@ function apiCreateRogueAppointment(payload) {
       'Date': payload['Date'],
       'Time': payload['Time'],
       'AM or PM': payload['AM or PM'],
-      'Owner ID': payload['Owner ID'] || '',
-      'Pet ID': payload['Pet ID'] || '',
+      'Owner ID': payload[CFG.COLS.OWNER_ID] || '',
+      'Pet ID': payload[CFG.COLS.PET_ID] || '',
       'Notes': payload['Notes'] || '',
       'Transportation Needed': payload['Transportation Needed'] || '',
       'Scheduled By': payload['Scheduled By']
@@ -350,7 +366,7 @@ function apiLogOutcome(appointmentId, outcome, textNote, htmlNote, user) {
   });
 }
 
-// ─── VET RECORD HELPERS (Preserved) ──────────────────
+// ─── VET RECORD HELPERS ──────────────────────────────
 
 function apiSendVetRecordReminder(schedulerName, petName, appointmentCard) {
   try {
@@ -491,27 +507,79 @@ function apiGetModifyContext(apptId) {
     
     // 1. Get Appointment Row from Master
     const allAppts = readAllAppointments_();
-    const appt = allAppts.find(r => String(r[CFG.COLS.ID]).trim() === String(apptId).trim());
+    
+    // Helper to find value case-insensitively (handles "Owner Id" vs "Owner ID")
+    const getValue = (row, targetHeader) => {
+      const key = Object.keys(row).find(k => k.toLowerCase().trim() === targetHeader.toLowerCase().trim());
+      return key ? row[key] : '';
+    };
+
+    const appt = allAppts.find(r => {
+        const val = getValue(r, CFG.COLS.ID);
+        return String(val).trim() === String(apptId).trim();
+    });
     
     if (!appt) {
       Logger.log('[Modify] Error: Appt not found');
       throw new Error('Appointment not found');
     }
 
-    const ownerId = String(appt[CFG.COLS.OWNER_ID] || '');
-    const petId   = String(appt[CFG.COLS.PET_ID] || '');
+    const ownerId = String(getValue(appt, CFG.COLS.OWNER_ID) || '').trim();
+    const petId   = String(getValue(appt, CFG.COLS.PET_ID) || '').trim();
     
-    Logger.log(`[Modify] Found appt. OwnerID: ${ownerId}, PetID: ${petId}`);
+    Logger.log(`[Modify] Found appt. OwnerID: "${ownerId}", PetID: "${petId}"`);
 
-    // 2. Get Owner from Central
-    const owners = findOwnersInDb_(ownerId); 
-    const owner = owners.length > 0 ? owners[0] : null;
+    let owner = null;
+    let pet = null;
 
-    // 3. Get Pet from Central
-    const pets = getPetsByOwnerId_(ownerId); 
-    const pet = pets.find(p => String(p.petId) === petId) || null;
+    // 2. Try to get Owner from Central
+    if (ownerId) {
+        const owners = findOwnersInDb_(ownerId); 
+        if (owners.length > 0) owner = owners[0];
+    }
 
-    Logger.log('[Modify] Context built successfully.');
+    // 2b. Fallback: If no ID or not found, build from Appointment Data
+    if (!owner) {
+        Logger.log('[Modify] Owner not found in Central DB (or no ID). Using Appt data fallback.');
+        owner = {
+            ownerId: ownerId || '', // Might be blank
+            firstName: getValue(appt, CFG.COLS.FIRST),
+            lastName: getValue(appt, CFG.COLS.LAST),
+            phone: getValue(appt, CFG.COLS.PHONE),
+            email: getValue(appt, CFG.COLS.EMAIL),
+            address: getValue(appt, CFG.COLS.ADDRESS),
+            city: getValue(appt, CFG.COLS.CITY),
+            state: getValue(appt, CFG.COLS.STATE),
+            zip: getValue(appt, CFG.COLS.ZIP)
+        };
+    }
+
+    // 3. Try to get Pet from Central
+    if (petId) {
+        if (ownerId) {
+            const pets = getPetsByOwnerId_(ownerId); 
+            pet = pets.find(p => String(p.petId) === petId);
+        }
+    }
+
+    // 3b. Fallback: If no ID or not found, build from Appointment Data
+    if (!pet) {
+        Logger.log('[Modify] Pet not found in Central DB. Using Appt data fallback.');
+        pet = {
+            petId: petId || '',
+            name: getValue(appt, CFG.COLS.PET_NAME),
+            species: getValue(appt, CFG.COLS.SPECIES),
+            breed: getValue(appt, CFG.COLS.BREED_ONE),
+            breed2: getValue(appt, CFG.COLS.BREED_TWO),
+            color: getValue(appt, CFG.COLS.COLOR),
+            pattern: getValue(appt, CFG.COLS.COLOR_PATTERN),
+            sex: getValue(appt, 'Sex'),
+            fixed: getValue(appt, 'Spayed or Neutered'),
+            age: getValue(appt, 'Age'),
+            weight: getValue(appt, 'Weight')
+        };
+    }
+
     return { appointment: appt, owner: owner, pet: pet };
   });
 }
@@ -525,6 +593,10 @@ function apiRescheduleAppointment(oldApptId, newSlotId, newType, payload, schedu
     if (!cancelRes.ok) throw new Error(cancelRes.error);
 
     // B. Book New
+    // 🔹 FIX: Explicit Map for Reschedule
+    if (payload['Owner ID'] || payload['ownerId']) payload[CFG.COLS.OWNER_ID] = payload['Owner ID'] || payload['ownerId'];
+    if (payload['Pet ID'] || payload['petId']) payload[CFG.COLS.PET_ID] = payload['Pet ID'] || payload['petId'];
+
     if (isRogue) {
       payload['Date'] = rogueData.date;
       payload['Time'] = rogueData.time;
