@@ -18,61 +18,78 @@ function findOwnersInDb_(query) {
   const ss = getCentralSs_();
   const sh = ss.getSheetByName(CFG.TABS.OWNERS);
   const data = sh.getDataRange().getValues();
-  const headers = data.shift(); // Remove headers from data array
   
-  // Map headers
+  // Extract and Trim Headers
+  // We use shift() to remove the header row from the data array so 'data' is just content
+  const headers = data.shift().map(h => String(h).trim().toLowerCase());
+  
+  // Map headers to column indices
   const hMap = {};
-  headers.forEach((h, i) => hMap[String(h).trim().toLowerCase()] = i);
+  headers.forEach((h, i) => {
+    hMap[h] = i;
+  });
   
+  // 1. Prepare the Search Query
   const q = String(query || '').trim().toLowerCase();
-  const qCleanPhone = q.replace(/\D/g, ''); // Digits only for phone search
+  const qCleanPhone = q.replace(/\D/g, ''); // Strip everything except digits (e.g. "7162429167")
   
-  // 🔹 FIX 1: Robust Column Lookup (Handles "Zip", "Zip Code", "Zipcode")
-  const idxZip = hMap['zip code'] !== undefined ? hMap['zip code'] : 
-                 (hMap['zip'] !== undefined ? hMap['zip'] : hMap['zipcode']);
+  // 2. Define Exact Column Names (Lowercased for lookup)
+  // We check if the column exists to prevent crashing if the sheet changes
+  const idxId = hMap['owner id'];
+  const idxFirst = hMap['first name'];
+  const idxLast = hMap['last name'];
+  const idxEmail = hMap['email'];
+  const idxPhone = hMap['phone number']; // STRICT MATCH as requested
+  
+  // Address fields for the return object
+  const idxAddress = hMap['street address'] !== undefined ? hMap['street address'] : hMap['address'];
+  const idxCity = hMap['city'];
+  const idxState = hMap['state'];
+  const idxZip = hMap['zip code'] !== undefined ? hMap['zip code'] : hMap['zip'];
+  const idxNotes = hMap['general notes'];
 
   const matches = [];
-  
+
+  // 3. Loop through data rows
   data.forEach((row, i) => {
-    const id = String(row[hMap['owner id']] || '');
-    const first = String(row[hMap['first name']] || '');
-    const last = String(row[hMap['last name']] || '');
-    const email = String(row[hMap['email']] || '').toLowerCase();
-    const phone = String(row[hMap['phone']] || '');
-    const phoneClean = phone.replace(/\D/g, ''); 
+    // Safely get values, defaulting to empty string if column missing
+    const id = idxId !== undefined ? String(row[idxId] || '') : '';
+    const email = idxEmail !== undefined ? String(row[idxEmail] || '').toLowerCase() : '';
+    
+    // Get the phone from the sheet and clean it immediately
+    const rawPhone = idxPhone !== undefined ? String(row[idxPhone] || '') : '';
+    const dbPhoneClean = rawPhone.replace(/\D/g, ''); // Turns "(716) 242-9167" into "7162429167"
     
     // MATCH LOGIC
     let isMatch = false;
     
-    // 1. ID Match (Exact)
-    if (id.toLowerCase() === q) isMatch = true;
+    // A. ID Match (Exact)
+    if (q && id.toLowerCase() === q) isMatch = true;
     
-    // 2. Email Match (Exact, case-insensitive)
-    if (email === q) isMatch = true;
+    // B. Email Match (Exact, case-insensitive)
+    if (q && email === q) isMatch = true;
     
-    // 3. Phone Match (Fuzzy digits)
-    if (qCleanPhone.length >= 7 && phoneClean.includes(qCleanPhone)) isMatch = true;
+    // C. Phone Match (Cleaned digits)
+    // We check if the database phone includes the search query. 
+    // e.g. Search "2429167" will match "7162429167"
+    // We require at least 4 digits to search to avoid matching every row with a "1"
+    if (qCleanPhone.length >= 4 && dbPhoneClean.includes(qCleanPhone)) {
+      isMatch = true;
+    }
     
     if (isMatch) {
-      // 🔹 FIX 2: Safely retrieve Zip and force to String
-      // This handles numbers (14224) and text ("14224") equally well
-      let zipVal = '';
-      if (idxZip !== undefined && row[idxZip] !== undefined && row[idxZip] !== '') {
-        zipVal = String(row[idxZip]);
-      }
-
       matches.push({
-        rowIndex: i + 2, // 1-based, +1 for header removed
+        rowIndex: i + 2, // 1-based index (Header is row 1, this loop starts at row 2)
         ownerId: id,
-        firstName: first,
-        lastName: last,
+        firstName: idxFirst !== undefined ? row[idxFirst] : '',
+        lastName: idxLast !== undefined ? row[idxLast] : '',
         email: email,
-        phone: phone,
-        address: row[hMap['street address']] || row[hMap['address']] || '', 
-        city: row[hMap['city']] || '',
-        state: row[hMap['state']] || '',
-        zip: zipVal, 
-        notes: row[hMap['general notes']] || ''
+        phone: rawPhone, // Return the original formatted phone for display
+        address: idxAddress !== undefined ? row[idxAddress] : '', 
+        city: idxCity !== undefined ? row[idxCity] : '',
+        state: idxState !== undefined ? row[idxState] : '',
+        zip: idxZip !== undefined ? String(row[idxZip]) : '', 
+        notes: idxNotes !== undefined ? row[idxNotes] : ''
       });
     }
   });
