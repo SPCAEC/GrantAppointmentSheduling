@@ -95,6 +95,7 @@
       <div id="step-owner" class="schedule-step hidden">
         <h2 id="lblOwnerStepTitle">Confirm Owner Info</h2>
         <p id="lblOwnerStepSub" class="hidden" style="color:#dc2626; margin-top:-0.5rem; margin-bottom:1rem; font-size:0.9rem; font-weight:600;">All fields required</p> 
+        
         <input type="hidden" id="ownerId">
         <div class="grid" style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
           <div class="field"><label>First Name <span style="color:red">*</span></label><input id="oFirst"></div>
@@ -108,7 +109,27 @@
           <div class="field"><label>State <span style="color:red">*</span></label><input id="oState"></div>
           <div class="field"><label>Zip <span style="color:red">*</span></label><input id="oZip"></div>
         </div>
-        <div class="actions">
+        
+        <div id="duplicateWarning" class="hidden" style="margin-top:1.5rem; background:#fff7ed; border:1px solid #c2410c; border-radius:8px; padding:1rem;">
+          <h3 style="color:#c2410c; margin-top:0; font-size:1.1rem;">⚠️ Existing Record Found</h3>
+          <p style="font-size:0.9rem; margin-bottom:1rem;">We found a client in the database that matches the Phone or Email you entered.</p>
+          
+          <div id="dupCard" style="background:#fff; padding:0.75rem; border:1px solid #ddd; border-radius:4px; font-size:0.9rem; color:#555; margin-bottom:1rem;">
+            </div>
+
+          <p style="font-size:0.9rem; color:#444;">
+            <strong>Merge Instructions:</strong> Use the form above to modify the client info if needed. 
+            When ready, click <strong>Merge Records</strong> below. 
+            <br><em style="color:#c2410c;">This will overwrite the existing record with the data above.</em>
+          </p>
+
+          <div class="actions" style="justify-content:flex-start; margin-top:0.5rem;">
+            <button id="btnMerge" class="btn" style="background:#c2410c; border-color:#c2410c; color:white;">Merge Records</button>
+            <button id="btnCancelMerge" class="btn secondary">Cancel</button>
+          </div>
+        </div>
+
+        <div class="actions" id="defaultOwnerActions">
           <button id="btnSaveOwner" class="btn">Save & Select Pet</button>
         </div>
       </div>
@@ -409,54 +430,157 @@
         }
     });
 
-    container.querySelector('#btnSaveOwner').onclick = () => {
+    // ─── 4b. SAVE / MERGE LOGIC ───────────────────────
+
+    // Helper: Validates form fields
+    function validateOwnerForm() {
       const payload = getOwnerFormData();
       const requiredFields = ['First Name', 'Last Name', 'Phone', 'Email', 'Street Address', 'City', 'State', 'Zip Code'];
       const missing = requiredFields.filter(field => !payload[field]);
-      
       if (missing.length > 0) {
         alert(`Please fill in all owner fields.\nMissing: ${missing.join(', ')}`);
-        return;
+        return null;
       }
-      
-      const currentJson = JSON.stringify(payload);
-      // Check if we started with an ID (Existing) or not (New)
-      const isExistingClient = !!payload['Owner ID'];
+      return payload;
+    }
 
-      // Optimization: If existing client and no data changed, skip save
-      if (isExistingClient && currentJson === TX.originalOwnerState) {
+    // PRIMARY SAVE BUTTON
+    container.querySelector('#btnSaveOwner').onclick = () => {
+      const payload = validateOwnerForm();
+      if (!payload) return;
+
+      const isExistingClient = !!payload['Owner ID']; // If we have an ID, it's an update, not a new create
+      
+      // OPTIMIZATION: If existing client and no changes, skip save
+      if (isExistingClient && JSON.stringify(payload) === TX.originalOwnerState) {
         TX.owner = { ...payload, ownerId: payload['Owner ID'] };
         showPetModal(payload['Owner ID']);
         return;
       }
 
-      const btn = container.querySelector('#btnSaveOwner');
-      btn.textContent = 'Saving...';
-      btn.disabled = true;
+      // 🛑 DUPLICATE CHECK (Only for "New" clients)
+      if (!isExistingClient) {
+        const btn = container.querySelector('#btnSaveOwner');
+        btn.textContent = 'Checking...';
+        btn.disabled = true;
 
-      google.script.run.withSuccessHandler(id => {
-        btn.textContent = 'Save & Select Pet';
-        btn.disabled = false;
-        container.querySelector('#ownerId').value = id;
+        // 1. Check Phone First
+        google.script.run.withSuccessHandler(phoneMatches => {
+          if (phoneMatches.length > 0) {
+             presentDuplicateOption(phoneMatches[0], payload); // Found via Phone
+             resetSaveBtn();
+          } else {
+             // 2. No Phone match? Check Email.
+             google.script.run.withSuccessHandler(emailMatches => {
+                if (emailMatches.length > 0) {
+                   presentDuplicateOption(emailMatches[0], payload); // Found via Email
+                   resetSaveBtn();
+                } else {
+                   // 3. CLEAN! No matches found. Proceed to Create.
+                   executeOwnerSave(payload, false); // false = is not a merge
+                }
+             }).apiSearchOwners(payload['Email']);
+          }
+        }).apiSearchOwners(payload['Phone']);
         
-        // Update State
-        payload['Owner ID'] = id;
-        TX.originalOwnerState = JSON.stringify(payload); 
-        TX.owner = { ...payload, ownerId: id };
+        return; // Stop here, let the async callbacks handle the rest
+      }
 
-        // 🔹 NEW LOGIC: Branch based on if client was new or existing
-        if (!isExistingClient) {
-           // Case A: New Client → They have no pets yet. Go directly to New Pet Form.
-           TX.pet = null;
-           populatePetForm({}); 
-           nextStep('step-owner', 'step-pet');
-        } else {
-           // Case B: Existing Client → They might have pets. Show the list.
-           showPetModal(id);
-        }
-
-      }).apiUpsertOwner(payload, TX.scheduler);
+      // If existing client, just save normal
+      executeOwnerSave(payload, true);
     };
+
+    function resetSaveBtn() {
+       const btn = container.querySelector('#btnSaveOwner');
+       btn.textContent = 'Save & Select Pet';
+       btn.disabled = false;
+    }
+
+    // HANDLE DUPLICATE FOUND
+    let pendingMergeId = null; // Store the ID of the record we found
+
+    function presentDuplicateOption(foundRecord, currentFormData) {
+       pendingMergeId = foundRecord.ownerId;
+       
+       // 1. Show Warning UI
+       const warn = container.querySelector('#duplicateWarning');
+       const actions = container.querySelector('#defaultOwnerActions');
+       const card = container.querySelector('#dupCard');
+
+       warn.classList.remove('hidden');
+       actions.classList.add('hidden');
+
+       // 2. Display Found Data
+       card.innerHTML = `
+         <strong>Existing Record (ID: ${foundRecord.ownerId})</strong><br>
+         ${foundRecord.firstName} ${foundRecord.lastName}<br>
+         ${foundRecord.phone} | ${foundRecord.email}<br>
+         ${foundRecord.address}, ${foundRecord.city}
+       `;
+    }
+
+    // MERGE BUTTON ACTION
+    container.querySelector('#btnMerge').onclick = () => {
+       const payload = validateOwnerForm();
+       if (!payload || !pendingMergeId) return;
+
+       // Inject the Found ID into the payload
+       payload['Owner ID'] = pendingMergeId;
+       
+       // Execute Save (which will now be an Update because ID exists)
+       // TRUE = Treat as Existing Client flow (show pets)
+       executeOwnerSave(payload, true); 
+    };
+
+    container.querySelector('#btnCancelMerge').onclick = () => {
+       // Hide Warning, Show Save button again
+       container.querySelector('#duplicateWarning').classList.add('hidden');
+       container.querySelector('#defaultOwnerActions').classList.remove('hidden');
+       pendingMergeId = null;
+    };
+
+    // CORE SAVE FUNCTION
+    function executeOwnerSave(payload, treatAsExisting) {
+       // Visual Feedback depends on context
+       const btn = treatAsExisting 
+          ? container.querySelector('#btnMerge') // If merging, feedback on Merge btn
+          : container.querySelector('#btnSaveOwner'); // Else, feedback on Save btn
+       
+       if(btn) {
+         btn.textContent = 'Saving...';
+         btn.disabled = true;
+       }
+
+       google.script.run.withSuccessHandler(id => {
+          // Restore buttons (in case we come back)
+          if(btn) {
+             btn.textContent = treatAsExisting ? 'Merge Records' : 'Save & Select Pet';
+             btn.disabled = false;
+          }
+          
+          // Sync State
+          container.querySelector('#ownerId').value = id;
+          payload['Owner ID'] = id;
+          TX.originalOwnerState = JSON.stringify(payload);
+          TX.owner = { ...payload, ownerId: id };
+
+          // Hide Merge UI if it was open
+          container.querySelector('#duplicateWarning').classList.add('hidden');
+          container.querySelector('#defaultOwnerActions').classList.remove('hidden');
+
+          // 🔹 CRITICAL FLOW BRANCH
+          if (treatAsExisting) {
+             // Merged or Existing -> Search for Pets
+             showPetModal(id);
+          } else {
+             // True New Client -> Skip Pet Search, Go to Empty Pet Form
+             TX.pet = null;
+             populatePetForm({});
+             nextStep('step-owner', 'step-pet');
+          }
+
+       }).apiUpsertOwner(payload, TX.scheduler);
+    }
 
     // Step 5: Pet Modal
     function showPetModal(ownerId) {
