@@ -1,8 +1,8 @@
 <script>
 (function() {
-  const { backBtn, sectionTitle } = window.SPCA || {};
 
   window.renderScheduleFlow = function(container, preloadedOwner = null) {
+    const { backBtn, sectionTitle } = window.SPCA || {};
     if(sectionTitle) sectionTitle.textContent = 'Schedule New Appointment';
 
     // ─── STATE ───────────────────────────────────────────
@@ -93,7 +93,8 @@
       </div>
 
       <div id="step-owner" class="schedule-step hidden">
-        <h2>Confirm Owner Info</h2>
+        <h2 id="lblOwnerStepTitle">Confirm Owner Info</h2>
+        <p id="lblOwnerStepSub" class="hidden" style="color:#dc2626; margin-top:-0.5rem; margin-bottom:1rem; font-size:0.9rem; font-weight:600;">All fields required</p> 
         <input type="hidden" id="ownerId">
         <div class="grid" style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
           <div class="field"><label>First Name <span style="color:red">*</span></label><input id="oFirst"></div>
@@ -336,22 +337,19 @@
     container.querySelector('#btnNewClient').onclick = () => {
       TX.owner = null; 
       
-      // 1. Capture what the user searched for
       const searchVal = container.querySelector('#qSearch').value.trim();
       const preFillData = {};
       
-      // 2. Determine if it's an Email or Phone
       if (searchVal && searchVal.length > 0) {
         if (searchVal.includes('@')) {
           preFillData['Email'] = searchVal;
         } else {
-          // Pass as 'Phone' - the phone formatter in step-owner will handle formatting later
           preFillData['Phone'] = searchVal;
         }
       }
 
-      // 3. Pre-fill the form and move to next step
-      populateOwnerForm(preFillData); 
+      // Pass 'true' to indicate this is a NEW client
+      populateOwnerForm(preFillData, true); 
       nextStep('step-search', 'step-owner');
     };
 
@@ -370,10 +368,24 @@
       };
     }
 
-    function populateOwnerForm(data) {
+    function populateOwnerForm(data, isNew = false) {
+      // 1. Toggle Header Text & Subtitle based on "isNew" flag
+      const title = container.querySelector('#lblOwnerStepTitle');
+      const sub = container.querySelector('#lblOwnerStepSub');
+      
+      if (isNew) {
+        title.textContent = 'Enter Client Info';
+        sub.classList.remove('hidden');
+      } else {
+        title.textContent = 'Confirm Client Info';
+        sub.classList.add('hidden');
+      }
+
+      // 2. Clear Fields
       const ids = ['oFirst','oLast','oPhone','oEmail','oAddress','oCity','oState','oZip','ownerId'];
       ids.forEach(id => container.querySelector('#'+id).value = '');
       
+      // 3. Populate Fields
       const val = (k1, k2) => data[k1] || data[k2] || '';
 
       container.querySelector('#oFirst').value = val('firstName', 'First Name');
@@ -408,8 +420,10 @@
       }
       
       const currentJson = JSON.stringify(payload);
+      // Check if we started with an ID (Existing) or not (New)
       const isExistingClient = !!payload['Owner ID'];
 
+      // Optimization: If existing client and no data changed, skip save
       if (isExistingClient && currentJson === TX.originalOwnerState) {
         TX.owner = { ...payload, ownerId: payload['Owner ID'] };
         showPetModal(payload['Owner ID']);
@@ -424,10 +438,23 @@
         btn.textContent = 'Save & Select Pet';
         btn.disabled = false;
         container.querySelector('#ownerId').value = id;
+        
+        // Update State
         payload['Owner ID'] = id;
         TX.originalOwnerState = JSON.stringify(payload); 
         TX.owner = { ...payload, ownerId: id };
-        showPetModal(id);
+
+        // 🔹 NEW LOGIC: Branch based on if client was new or existing
+        if (!isExistingClient) {
+           // Case A: New Client → They have no pets yet. Go directly to New Pet Form.
+           TX.pet = null;
+           populatePetForm({}); 
+           nextStep('step-owner', 'step-pet');
+        } else {
+           // Case B: Existing Client → They might have pets. Show the list.
+           showPetModal(id);
+        }
+
       }).apiUpsertOwner(payload, TX.scheduler);
     };
 
