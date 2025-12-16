@@ -335,7 +335,23 @@
 
     container.querySelector('#btnNewClient').onclick = () => {
       TX.owner = null; 
-      populateOwnerForm({}); 
+      
+      // 1. Capture what the user searched for
+      const searchVal = container.querySelector('#qSearch').value.trim();
+      const preFillData = {};
+      
+      // 2. Determine if it's an Email or Phone
+      if (searchVal && searchVal.length > 0) {
+        if (searchVal.includes('@')) {
+          preFillData['Email'] = searchVal;
+        } else {
+          // Pass as 'Phone' - the phone formatter in step-owner will handle formatting later
+          preFillData['Phone'] = searchVal;
+        }
+      }
+
+      // 3. Pre-fill the form and move to next step
+      populateOwnerForm(preFillData); 
       nextStep('step-search', 'step-owner');
     };
 
