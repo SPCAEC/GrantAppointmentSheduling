@@ -100,43 +100,55 @@ function findOwnersInDb_(query) {
 /**
  * Get Active Pets for an Owner
  */
+/**
+ * Get Active Pets for an Owner
+ */
 function getPetsByOwnerId_(ownerId) {
   const ss = getCentralSs_();
   const sh = ss.getSheetByName(CFG.TABS.PETS);
   const data = sh.getDataRange().getValues();
-  const headers = data.shift();
+  const headers = data.shift().map(h => String(h).trim().toLowerCase());
   
   const hMap = {};
-  headers.forEach((h, i) => hMap[String(h).trim().toLowerCase()] = i);
+  headers.forEach((h, i) => hMap[h] = i);
   
-  // 🔹 FIX: Identify Pattern and Weight columns safely
-  const idxPattern = hMap['color pattern'] !== undefined ? hMap['color pattern'] : hMap['pattern'];
+  // 🔹 FIX: Robust Column Lookups based on user request
+  const idxPattern = hMap['pattern'] !== undefined ? hMap['pattern'] : hMap['color pattern'];
   const idxWeight  = hMap['weight'] !== undefined ? hMap['weight'] : hMap['approx weight'];
+  const idxStatus  = hMap['pet status'] !== undefined ? hMap['pet status'] : hMap['status'];
+  
+  // Breeds & Fixed
+  const idxBreed1 = hMap['breed one'] !== undefined ? hMap['breed one'] : hMap['primary breed'];
+  const idxBreed2 = hMap['breed two'] !== undefined ? hMap['breed two'] : hMap['secondary breed'];
+  const idxFixed  = hMap['spayed or neutered'] !== undefined ? hMap['spayed or neutered'] : (hMap['altered'] !== undefined ? hMap['altered'] : hMap['fixed']);
 
   const pets = [];
-  
   data.forEach((row, i) => {
     const pOwnerId = String(row[hMap['owner id']] || '');
-    const status = String(row[hMap['pet status']] || 'Active'); 
+    const statusVal = idxStatus !== undefined ? String(row[idxStatus]) : 'Active';
     
-    if (pOwnerId === ownerId && status.toLowerCase() === 'active') {
+    if (pOwnerId === ownerId && statusVal.trim().toLowerCase() === 'active') {
       pets.push({
         rowIndex: i + 2,
         petId: row[hMap['pet id']],
         name: row[hMap['pet name']],
         species: row[hMap['species']],
-        breed: row[hMap['primary breed']],
+        
+        // 🔹 UPDATED MAPPINGS
+        breed: (idxBreed1 !== undefined) ? row[idxBreed1] : '',
+        breed2: (idxBreed2 !== undefined) ? row[idxBreed2] : '', // Now including Breed 2
+        
         color: row[hMap['color']],
-        // 🔹 FIX: Retrieve Pattern and Weight
         pattern: (idxPattern !== undefined) ? row[idxPattern] : '',
+        
+        fixed: (idxFixed !== undefined) ? row[idxFixed] : '',
+        
         weight: (idxWeight !== undefined) ? row[idxWeight] : '',
         age: row[hMap['age']],
-        sex: row[hMap['sex']],
-        fixed: row[hMap['altered']]
+        sex: row[hMap['sex']]
       });
     }
   });
-  
   return pets;
 }
 
@@ -176,24 +188,23 @@ function updatePetStatusInDb_(petId, newStatus, note, user) {
   const ss = getCentralSs_();
   const sh = ss.getSheetByName(CFG.TABS.PETS);
   const data = sh.getDataRange().getValues();
-  const headers = data[0];
+  const headers = data[0]; // Keep headers for finding index
   
-  // Find Index of Columns
+  // 🔹 FIX: Robust Column Lookup
   let idxId = -1, idxStatus = -1, idxNote = -1, idxUpdatedBy = -1, idxUpdatedAt = -1;
   
   headers.forEach((h, i) => {
     const lh = String(h).toLowerCase().trim();
     if (lh === 'pet id') idxId = i;
-    if (lh === 'pet status') idxStatus = i;
-    if (lh === 'status note') idxNote = i;
+    if (lh === 'pet status' || lh === 'status') idxStatus = i; // Match both
+    if (lh === 'status note' || lh === 'notes') idxNote = i;
     if (lh === 'updated by') idxUpdatedBy = i;
     if (lh === 'updated at') idxUpdatedAt = i;
   });
-  
-  if (idxId === -1 || idxStatus === -1) throw new Error('Missing columns in Pets tab');
-  
+
+  if (idxId === -1 || idxStatus === -1) throw new Error('Missing "Pet ID" or "Status" columns in Pets tab');
+
   // Find Row
-  // Loop data (skip header)
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][idxId]) === String(petId)) {
       const rowNum = i + 1;
@@ -201,7 +212,7 @@ function updatePetStatusInDb_(petId, newStatus, note, user) {
       // Update Status
       sh.getRange(rowNum, idxStatus + 1).setValue(newStatus);
       
-      // Update Note (Append if existing?)
+      // Update Note
       if (idxNote !== -1 && note) {
         const oldNote = data[i][idxNote];
         const finalNote = oldNote ? `${oldNote} | ${note}` : note;

@@ -683,21 +683,32 @@
     }
 
     // Step 6: Pet Form
+    // Step 6: Pet Form
     function populatePetForm(p) {
+      // 1. Clear all fields first
       const ids = ['petId','pName','pSpecies','pBreed1','pBreed2','pColor','pPattern','pSex','pFixed','pAge','pWeight'];
-      ids.forEach(id => container.querySelector('#'+id).value = '');
+      ids.forEach(id => {
+         const el = container.querySelector('#'+id);
+         if(el) el.value = '';
+      });
       
+      // 2. Map Data to Fields
       if(p.petId) container.querySelector('#petId').value = p.petId;
       if(p.name) container.querySelector('#pName').value = p.name;
       if(p.species) container.querySelector('#pSpecies').value = p.species;
-      if(p.breed) container.querySelector('#pBreed1').value = p.breed;
-      if(p.color) container.querySelector('#pColor').value = p.color;
       
-      // Populate Pattern and Weight
+      // 🔹 FIX: Map Breed 1 & Breed 2
+      if(p.breed) container.querySelector('#pBreed1').value = p.breed;
+      if(p.breed2) container.querySelector('#pBreed2').value = p.breed2; // Now handling Breed 2
+      
+      if(p.color) container.querySelector('#pColor').value = p.color;
       if(p.pattern) container.querySelector('#pPattern').value = p.pattern;
-      if(p.weight) container.querySelector('#pWeight').value = p.weight;
       
       if(p.age) container.querySelector('#pAge').value = p.age;
+      if(p.weight) container.querySelector('#pWeight').value = p.weight;
+      
+      // Dropdowns (Sex / Fixed)
+      // Browsers will auto-select if the value matches one of the <option> values exactly
       if(p.sex) container.querySelector('#pSex').value = p.sex;
       if(p.fixed) container.querySelector('#pFixed').value = p.fixed;
     }
