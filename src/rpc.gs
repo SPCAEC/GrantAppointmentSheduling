@@ -64,6 +64,108 @@ function apiUpsertPet(payload, user) {
 
 // ─── LEGACY / STANDARD SCHEDULING ────────────────────
 
+function apiGetAvailableSlots(type, limit) {
+  return apiResponse_(() => {
+    limit = limit || 6;
+    if (!CFG || !CFG.SHEET_ID) throw new Error('Configuration (CFG) not found.');
+
+    const slotsRaw = getAvailableSlots_(type, limit);
+    if (!Array.isArray(slotsRaw)) throw new Error('No slot data returned');
+
+    const slots = slotsRaw.map(r => ({
+      id:   String(r[CFG.COLS.ID] || ''),
+      day:  String(r[CFG.COLS.DAY] || ''),
+      date: String(r[CFG.COLS.DATE] || ''),
+      time: `${r[CFG.COLS.TIME] || ''} ${r[CFG.COLS.AMPM] || ''}`.trim(),
+      grant: String(r[CFG.COLS.GRANT] || '')
+    }));
+
+    return { slots };
+  });
+}
+
+function apiBookAppointment(payload, type, date, time, appointmentId, schedulerName) {
+  return apiResponse_(() => {
+    if (!CFG || !CFG.SHEET_ID) throw new Error('Configuration (CFG) not found.');
+    if (!payload || typeof payload !== 'object') throw new Error('Invalid payload');
+
+    payload = normalizePayload_(payload);
+    
+    // 1. Enforce IDs
+    if (payload['Owner ID'] || payload['ownerId']) {
+        payload[CFG.COLS.OWNER_ID] = payload['Owner ID'] || payload['ownerId'];
+    }
+    if (payload['Pet ID'] || payload['petId']) {
+        payload[CFG.COLS.PET_ID] = payload['Pet ID'] || payload['petId'];
+    }
+
+    // 2. Grant Logic (Zip Codes)
+    const zip = String(payload['Zip Code'] || '').trim();
+    let grant = 'Incubator Extended'; // Default catch-all
+
+    if (zip.includes('14215') || zip.includes('14211')) {
+      grant = 'PFL';
+    } else if (zip.includes('14208')) {
+      grant = 'Incubator';
+    }
+    
+    payload[CFG.COLS.GRANT] = grant;
+
+    const data = readAllAppointments_();
+    
+    let rowIndex = -1;
+    if (appointmentId) {
+      rowIndex = data.findIndex(r => String(r[CFG.COLS.ID]).trim() === String(appointmentId).trim()) + 2;
+    }
+
+    if (rowIndex < 2) {
+      rowIndex = data.findIndex(r => {
+        const rowDate = r[CFG.COLS.DATE] instanceof Date
+          ? Utilities.formatDate(r[CFG.COLS.DATE], Session.getScriptTimeZone(), 'MM/dd/yyyy')
+          : String(r[CFG.COLS.DATE]).trim();
+        const rowTime = `${r[CFG.COLS.TIME]} ${r[CFG.COLS.AMPM]}`.trim();
+        return (
+          String(r[CFG.COLS.TYPE]).trim().toLowerCase() === String(type).trim().toLowerCase() &&
+          rowDate === String(date).trim() &&
+          rowTime === String(time).trim()
+        );
+      }) + 2;
+    }
+
+    if (rowIndex < 2) throw new Error(`Appointment slot not found: ${appointmentId}`);
+    
+    payload[CFG.COLS.STATUS] = 'Reserved';
+    payload[CFG.COLS.NEEDS_SCHED] = 'Yes';
+    if (CFG.COLS.SCHEDULED_BY) payload[CFG.COLS.SCHEDULED_BY] = schedulerName || '';
+
+    updateAppointmentRow_(rowIndex, payload);
+
+    // Logging
+    const historyPayload = {
+      'Appointment ID': appointmentId,
+      'Appointment Type': type,
+      'Date': date,
+      'Time': time,
+      'AM or PM': payload['AM or PM'] || '',
+      'Owner ID': payload[CFG.COLS.OWNER_ID] || '',
+      'Pet ID': payload[CFG.COLS.PET_ID] || '',
+      'Notes': payload['Notes'] || '',
+      'Transportation Needed': payload['Transportation Needed'] || '',
+      'Scheduled By': schedulerName
+    };
+    if (date) {
+       const d = new Date(date);
+       historyPayload['Day of Week'] = Utilities.formatDate(d, Session.getScriptTimeZone(), 'EEEE');
+    }
+
+    if (typeof logAppointmentHistory_ === 'function') {
+        logAppointmentHistory_(historyPayload);
+    }
+
+    return {};
+  });
+}
+
 function apiCreateRogueAppointment(payload) {
   return apiResponse_(() => {
     if (!payload) throw new Error('Missing payload');
