@@ -64,139 +64,25 @@ function apiUpsertPet(payload, user) {
 
 // ─── LEGACY / STANDARD SCHEDULING ────────────────────
 
-function apiGetAvailableSlots(type, limit) {
-  return apiResponse_(() => {
-    limit = limit || 6;
-    if (!CFG || !CFG.SHEET_ID) throw new Error('Configuration (CFG) not found.');
-
-    const slotsRaw = getAvailableSlots_(type, limit);
-    if (!Array.isArray(slotsRaw)) throw new Error('No slot data returned');
-
-    const slots = slotsRaw.map(r => ({
-      id:   String(r[CFG.COLS.ID] || ''),
-      day:  String(r[CFG.COLS.DAY] || ''),
-      date: String(r[CFG.COLS.DATE] || ''),
-      time: `${r[CFG.COLS.TIME] || ''} ${r[CFG.COLS.AMPM] || ''}`.trim(),
-      grant: String(r[CFG.COLS.GRANT] || '')
-    }));
-
-    return { slots };
-  });
-}
-
-function apiBookAppointment(payload, type, date, time, appointmentId, schedulerName) {
-  return apiResponse_(() => {
-    if (!CFG || !CFG.SHEET_ID) throw new Error('Configuration (CFG) not found.');
-    if (!payload || typeof payload !== 'object') throw new Error('Invalid payload');
-
-    payload = normalizePayload_(payload);
-    
-    // 🔹 FIX: Explicitly ensure IDs are mapped to the correct Sheet Header Keys
-    // This handles cases where frontend sends 'ownerId' or 'Owner ID' mixed
-    if (payload['Owner ID'] || payload['ownerId']) {
-        payload[CFG.COLS.OWNER_ID] = payload['Owner ID'] || payload['ownerId'];
-    }
-    if (payload['Pet ID'] || payload['petId']) {
-        payload[CFG.COLS.PET_ID] = payload['Pet ID'] || payload['petId'];
-    }
-
-    const data = readAllAppointments_();
-    
-    let rowIndex = -1;
-
-    if (appointmentId) {
-      rowIndex = data.findIndex(r => String(r[CFG.COLS.ID]).trim() === String(appointmentId).trim()) + 2;
-    }
-
-    if (rowIndex < 2) {
-      rowIndex = data.findIndex(r => {
-        const rowDate = r[CFG.COLS.DATE] instanceof Date
-          ? Utilities.formatDate(r[CFG.COLS.DATE], Session.getScriptTimeZone(), 'MM/dd/yyyy')
-          : String(r[CFG.COLS.DATE]).trim();
-        const rowTime = `${r[CFG.COLS.TIME]} ${r[CFG.COLS.AMPM]}`.trim();
-        return (
-          String(r[CFG.COLS.TYPE]).trim().toLowerCase() === String(type).trim().toLowerCase() &&
-          rowDate === String(date).trim() &&
-          rowTime === String(time).trim()
-        );
-      }) + 2;
-    }
-
-    if (rowIndex < 2) throw new Error(`Appointment slot not found: ${appointmentId}`);
-
-    payload[CFG.COLS.STATUS] = 'Reserved';
-    payload[CFG.COLS.NEEDS_SCHED] = 'Yes';
-    if (CFG.COLS.SCHEDULED_BY) payload[CFG.COLS.SCHEDULED_BY] = schedulerName || '';
-
-    updateAppointmentRow_(rowIndex, payload);
-
-    const historyPayload = {
-      'Appointment ID': appointmentId,
-      'Appointment Type': type,
-      'Date': date,
-      'Time': time,
-      'AM or PM': payload['AM or PM'] || '',
-      'Owner ID': payload[CFG.COLS.OWNER_ID] || '',
-      'Pet ID': payload[CFG.COLS.PET_ID] || '',
-      'Notes': payload['Notes'] || '',
-      'Transportation Needed': payload['Transportation Needed'] || '',
-      'Scheduled By': schedulerName
-    };
-    
-    if (date) {
-       const d = new Date(date);
-       historyPayload['Day of Week'] = Utilities.formatDate(d, Session.getScriptTimeZone(), 'EEEE');
-    }
-
-    if (typeof logAppointmentHistory_ === 'function') {
-        logAppointmentHistory_(historyPayload);
-    }
-
-    return {};
-  });
-}
-
-function apiUpdateAppointment(appointmentId, payload, updatedBy, transportNeeded) {
-  return apiResponse_(() => {
-    if (!appointmentId) throw new Error('Missing ID');
-    payload = normalizePayload_(payload);
-    
-    // 🔹 FIX: Explicit Map
-    if (payload['Owner ID'] || payload['ownerId']) payload[CFG.COLS.OWNER_ID] = payload['Owner ID'] || payload['ownerId'];
-    if (payload['Pet ID'] || payload['petId']) payload[CFG.COLS.PET_ID] = payload['Pet ID'] || payload['petId'];
-
-    const all = readAllAppointments_();
-    const idx = all.findIndex(r => String(r[CFG.COLS.ID] || '').trim() === String(appointmentId).trim());
-    if (idx < 0) throw new Error('Not found');
-
-    payload[CFG.COLS.NEEDS_SCHED] = 'Yes';
-    if (CFG.COLS.UPDATED_BY) payload[CFG.COLS.UPDATED_BY] = String(updatedBy || '');
-    if (CFG.COLS.TRANSPORT_NEEDED) payload[CFG.COLS.TRANSPORT_NEEDED] = (transportNeeded === 'Yes' ? 'Yes' : 'No');
-
-    updateAppointmentRow_(idx + 2, payload);
-    
-    const status = String(payload[CFG.COLS.STATUS] || '');
-    if (status.toLowerCase() === 'scheduled') {
-      try {
-        if(typeof sendAppointmentChangeEmail_ === 'function') sendAppointmentChangeEmail_(payload);
-      } catch (e) { console.warn(e); }
-    }
-    
-    return {};
-  });
-}
-
 function apiCreateRogueAppointment(payload) {
   return apiResponse_(() => {
     if (!payload) throw new Error('Missing payload');
     
-    // 🔹 FIX: Explicit Map
+    // 1. Enforce IDs
     if (payload['Owner ID'] || payload['ownerId']) payload[CFG.COLS.OWNER_ID] = payload['Owner ID'] || payload['ownerId'];
     if (payload['Pet ID'] || payload['petId']) payload[CFG.COLS.PET_ID] = payload['Pet ID'] || payload['petId'];
 
     const newId = getNextAppointmentId_();
+    
+    // 2. Grant Logic
     const zip = String(payload['Zip Code'] || '').trim();
-    const grant = (zip.includes('14215') || zip.includes('14211')) ? 'PFL' : 'Incubator';
+    let grant = 'Incubator Extended'; 
+
+    if (zip.includes('14215') || zip.includes('14211')) {
+      grant = 'PFL';
+    } else if (zip.includes('14208')) {
+      grant = 'Incubator';
+    }
 
     const dateStr = payload['Date']; 
     let dayOfWeek = '';
@@ -223,7 +109,7 @@ function apiCreateRogueAppointment(payload) {
       [CFG.COLS.UPDATED_BY]: payload['Scheduled By'],
       [CFG.COLS.CREATED_AT]: new Date()
     });
-
+    
     appendNewAppointment_(fullRecord);
     
     const historyPayload = {
@@ -240,7 +126,6 @@ function apiCreateRogueAppointment(payload) {
       'Scheduled By': payload['Scheduled By']
     };
     if (typeof logAppointmentHistory_ === 'function') logAppointmentHistory_(historyPayload);
-
     return { id: newId };
   });
 }

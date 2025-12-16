@@ -1,6 +1,5 @@
 <script>
 (function() {
-
   window.renderScheduleFlow = function(container, preloadedOwner = null) {
     const { backBtn, sectionTitle } = window.SPCA || {};
     if(sectionTitle) sectionTitle.textContent = 'Schedule New Appointment';
@@ -22,30 +21,22 @@
 
     // Custom function to handle forward/backward movement
     function nextStep(currentId, nextId) {
-      // 1. Hide Current, Show Next
       container.querySelector('#'+currentId).classList.add('hidden');
       container.querySelector('#'+nextId).classList.remove('hidden');
       window.scrollTo({top:0, behavior:'smooth'});
-
-      // 2. Push current to history
       stepHistory.push(currentId);
-
-      // 3. Register the Custom Back Handler
       window.SPCA.setBackHandler(() => {
         const prevId = stepHistory.pop();
-        
-        // Hide current (which is actually nextId from the closure perspective)
-        // Ideally we grab the currently visible step, but using the IDs passed is safer:
         container.querySelector('#'+nextId).classList.add('hidden');
         container.querySelector('#'+prevId).classList.remove('hidden');
-        
-        // If stack is empty, release control back to Main Menu default
-        if (stepHistory.length === 0) {
-          window.SPCA.setBackHandler(null);
-        } else {
-          // Keep the handler active for the *next* back press (recursion handled by state)
-        }
+        if (stepHistory.length === 0) window.SPCA.setBackHandler(null);
       });
+    }
+
+    // ─── HELPERS ─────────────────────────────────────────
+    function toProperCase(str) {
+      if (!str) return '';
+      return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
     }
 
     // ─── TEMPLATE ────────────────────────────────────────
@@ -113,16 +104,12 @@
         <div id="duplicateWarning" class="hidden" style="margin-top:1.5rem; background:#fff7ed; border:1px solid #c2410c; border-radius:8px; padding:1rem;">
           <h3 style="color:#c2410c; margin-top:0; font-size:1.1rem;">⚠️ Existing Record Found</h3>
           <p style="font-size:0.9rem; margin-bottom:1rem;">We found a client in the database that matches the Phone or Email you entered.</p>
-          
-          <div id="dupCard" style="background:#fff; padding:0.75rem; border:1px solid #ddd; border-radius:4px; font-size:0.9rem; color:#555; margin-bottom:1rem;">
-            </div>
-
+          <div id="dupCard" style="background:#fff; padding:0.75rem; border:1px solid #ddd; border-radius:4px; font-size:0.9rem; color:#555; margin-bottom:1rem;"></div>
           <p style="font-size:0.9rem; color:#444;">
             <strong>Merge Instructions:</strong> Use the form above to modify the client info if needed. 
             When ready, click <strong>Merge Records</strong> below. 
             <br><em style="color:#c2410c;">This will overwrite the existing record with the data above.</em>
           </p>
-
           <div class="actions" style="justify-content:flex-start; margin-top:0.5rem;">
             <button id="btnMerge" class="btn" style="background:#c2410c; border-color:#c2410c; color:white;">Merge Records</button>
             <button id="btnCancelMerge" class="btn secondary">Cancel</button>
@@ -151,10 +138,25 @@
           <div class="field"><label>Sex</label><select id="pSex"><option>Male</option><option>Female</option><option>Unknown</option></select></div>
           <div class="field"><label>Spayed/Neutered</label><select id="pFixed"><option>Spayed</option><option>Neutered</option><option>No</option><option>Unknown</option></select></div>
         </div>
-        <div class="grid" style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
-          <div class="field"><label>Age</label><input id="pAge"></div>
-          <div class="field"><label>Weight</label><input id="pWeight" type="number"></div>
+        
+        <div class="grid" style="display:grid; grid-template-columns:2fr 2fr 3fr; gap:0.75rem;">
+          <div class="field">
+             <label>Age (Years)</label>
+             <input id="pAgeY" type="number" min="0" placeholder="0">
+          </div>
+          <div class="field">
+             <label>(Months)</label>
+             <input id="pAgeM" type="number" min="0" max="11" placeholder="0">
+          </div>
+          <div class="field">
+             <label>Weight (Pounds)</label>
+             <div style="display:flex; align-items:center;">
+                <input id="pWeight" type="number" min="0" style="width:100%;">
+                <span style="margin-left:8px; font-size:0.9rem; color:#555;">lbs</span>
+             </div>
+          </div>
         </div>
+
         <div class="actions">
           <button id="btnSavePet" class="btn">Save & Continue</button>
         </div>
@@ -184,7 +186,16 @@
           </div>
         </div>
         <div class="field"><label>Vet Office</label><input id="aVet"></div>
-        <div class="field"><label>Allergies</label><input id="aAllergy"></div>
+        
+        <div class="field">
+           <label>Allergies or Sensitivities?</label>
+           <div class="option-buttons-left" style="margin-bottom:0.5rem;">
+              <label><input type="radio" name="hasAllergy" value="Yes"> Yes</label>
+              <label><input type="radio" name="hasAllergy" value="No" checked> No</label>
+           </div>
+           <input id="aAllergyText" class="hidden" placeholder="Please specify allergies...">
+        </div>
+
         <div class="field"><label>Notes <span style="color:red">*</span></label><textarea id="aNotes"></textarea></div>
         
         <div class="actions">
@@ -233,18 +244,15 @@
     function loadSlots() {
       const grid = container.querySelector('#slotGrid');
       grid.innerHTML = '<div class="spinner"></div>';
-      
       google.script.run.withSuccessHandler(res => {
         grid.innerHTML = '';
         if(!res.ok || !res.slots.length) { 
           grid.innerHTML = '<p>No slots available.</p>'; 
           return; 
         }
-        
         res.slots.forEach(s => {
           const card = document.createElement('div');
           card.className = 'card';
-          
           card.innerHTML = `
             <div style="font-weight:700; font-size:1.05rem; margin-bottom:0.25rem;">${TX.type}</div>
             <div style="margin-bottom:0.1rem;">${s.day} ${s.date}</div>
@@ -252,11 +260,9 @@
             <div style="font-size:0.9rem; color:#444;">Grant: ${s.grant || 'None'}</div>
             <div style="font-size:0.75rem; opacity:0.5; margin-top:0.4rem;">ID: ${s.id}</div>
           `;
-          
           card.onclick = () => {
             TX.slot = s;
             TX.isRogue = false;
-            // Branch: If owner exists (Book Next), skip search
             if (TX.owner) {
                populateOwnerForm(TX.owner);
                nextStep('step-slots', 'step-owner');
@@ -281,7 +287,6 @@
       }
     };
 
-    // Rogue Logic
     container.querySelector('#rNext').onclick = () => {
       const d = container.querySelector('#rDate').value;
       const t = container.querySelector('#rTime').value;
@@ -300,7 +305,6 @@
         </div>
       `;
       document.body.appendChild(warnModal);
-
       warnModal.querySelector('#rogueCancel').onclick = () => warnModal.remove();
       warnModal.querySelector('#rogueConfirm').onclick = () => {
          warnModal.remove();
@@ -316,29 +320,21 @@
 
     // Step 3: Search
     const qSearch = container.querySelector('#qSearch');
-    const sRes = container.querySelector('#searchResults');
     const btnSearch = container.querySelector('#btnSearch');
-
-    qSearch.addEventListener('keyup', (e) => {
-      if (e.key === 'Enter') btnSearch.click();
-    });
+    qSearch.addEventListener('keyup', (e) => { if (e.key === 'Enter') btnSearch.click(); });
 
     btnSearch.onclick = () => {
+      const sRes = container.querySelector('#searchResults');
       sRes.innerHTML = '<div class="spinner"></div>';
       google.script.run.withSuccessHandler(matches => {
         sRes.innerHTML = '';
-        if(!matches.length) { 
-            sRes.innerHTML = '<p>No matches found.</p>'; 
-            return; 
-        }
-        
+        if(!matches.length) { sRes.innerHTML = '<p>No matches found.</p>'; return; }
         if(matches.length === 1) {
             TX.owner = matches[0];
             populateOwnerForm(matches[0]);
             nextStep('step-search', 'step-owner');
             return;
         }
-
         matches.forEach(m => {
           const row = document.createElement('div');
           row.className = 'card';
@@ -357,58 +353,42 @@
 
     container.querySelector('#btnNewClient').onclick = () => {
       TX.owner = null; 
-      
       const searchVal = container.querySelector('#qSearch').value.trim();
       const preFillData = {};
-      
       if (searchVal && searchVal.length > 0) {
-        if (searchVal.includes('@')) {
-          preFillData['Email'] = searchVal;
-        } else {
-          preFillData['Phone'] = searchVal;
-        }
+        if (searchVal.includes('@')) preFillData['Email'] = searchVal;
+        else preFillData['Phone'] = searchVal;
       }
-
-      // Pass 'true' to indicate this is a NEW client
       populateOwnerForm(preFillData, true); 
       nextStep('step-search', 'step-owner');
     };
 
     // Step 4: Owner Form
     function getOwnerFormData() {
+      // 🔹 UPDATED: Proper Case Applied
       return {
         'Owner ID': container.querySelector('#ownerId').value,
-        'First Name': container.querySelector('#oFirst').value.trim(),
-        'Last Name': container.querySelector('#oLast').value.trim(),
+        'First Name': toProperCase(container.querySelector('#oFirst').value.trim()),
+        'Last Name': toProperCase(container.querySelector('#oLast').value.trim()),
         'Phone': container.querySelector('#oPhone').value.trim(),
-        'Email': container.querySelector('#oEmail').value.trim(),
-        'Street Address': container.querySelector('#oAddress').value.trim(),
-        'City': container.querySelector('#oCity').value.trim(),
-        'State': container.querySelector('#oState').value.trim(),
+        'Email': toProperCase(container.querySelector('#oEmail').value.trim()), 
+        'Street Address': toProperCase(container.querySelector('#oAddress').value.trim()),
+        'City': toProperCase(container.querySelector('#oCity').value.trim()),
+        'State': toProperCase(container.querySelector('#oState').value.trim()),
         'Zip Code': container.querySelector('#oZip').value.trim()
       };
     }
 
     function populateOwnerForm(data, isNew = false) {
-      // 1. Toggle Header Text & Subtitle based on "isNew" flag
       const title = container.querySelector('#lblOwnerStepTitle');
       const sub = container.querySelector('#lblOwnerStepSub');
-      
-      if (isNew) {
-        title.textContent = 'Enter Client Info';
-        sub.classList.remove('hidden');
-      } else {
-        title.textContent = 'Confirm Client Info';
-        sub.classList.add('hidden');
-      }
+      if (isNew) { title.textContent = 'Enter Client Info'; sub.classList.remove('hidden'); }
+      else { title.textContent = 'Confirm Client Info'; sub.classList.add('hidden'); }
 
-      // 2. Clear Fields
       const ids = ['oFirst','oLast','oPhone','oEmail','oAddress','oCity','oState','oZip','ownerId'];
       ids.forEach(id => container.querySelector('#'+id).value = '');
       
-      // 3. Populate Fields
       const val = (k1, k2) => data[k1] || data[k2] || '';
-
       container.querySelector('#oFirst').value = val('firstName', 'First Name');
       container.querySelector('#oLast').value = val('lastName', 'Last Name');
       container.querySelector('#oPhone').value = val('phone', 'Phone');
@@ -418,100 +398,68 @@
       container.querySelector('#oState').value = val('state', 'State');
       container.querySelector('#oZip').value = val('zip', 'Zip Code');
       container.querySelector('#ownerId').value = val('ownerId', 'Owner ID');
-
       TX.originalOwnerState = JSON.stringify(getOwnerFormData());
     }
 
     const pInput = container.querySelector('#oPhone');
     pInput.addEventListener('blur', () => {
         const digits = pInput.value.replace(/\D/g, '');
-        if (digits.length === 10) {
-          pInput.value = `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
-        }
+        if (digits.length === 10) pInput.value = `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
     });
 
-    // ─── 4b. SAVE / MERGE LOGIC ───────────────────────
-
-    // Helper: Validates form fields
+    // SAVE / MERGE LOGIC
     function validateOwnerForm() {
       const payload = getOwnerFormData();
       const requiredFields = ['First Name', 'Last Name', 'Phone', 'Email', 'Street Address', 'City', 'State', 'Zip Code'];
       const missing = requiredFields.filter(field => !payload[field]);
-      if (missing.length > 0) {
-        alert(`Please fill in all owner fields.\nMissing: ${missing.join(', ')}`);
-        return null;
-      }
+      if (missing.length > 0) { alert(`Please fill in all owner fields.\nMissing: ${missing.join(', ')}`); return null; }
       return payload;
     }
 
-    // PRIMARY SAVE BUTTON
     container.querySelector('#btnSaveOwner').onclick = () => {
       const payload = validateOwnerForm();
       if (!payload) return;
-
-      const isExistingClient = !!payload['Owner ID']; // If we have an ID, it's an update, not a new create
+      const isExistingClient = !!payload['Owner ID'];
       
-      // OPTIMIZATION: If existing client and no changes, skip save
       if (isExistingClient && JSON.stringify(payload) === TX.originalOwnerState) {
         TX.owner = { ...payload, ownerId: payload['Owner ID'] };
         showPetModal(payload['Owner ID']);
         return;
       }
 
-      // 🛑 DUPLICATE CHECK (Only for "New" clients)
       if (!isExistingClient) {
         const btn = container.querySelector('#btnSaveOwner');
-        btn.textContent = 'Checking...';
-        btn.disabled = true;
-
-        // 1. Check Phone First
+        btn.textContent = 'Checking...'; btn.disabled = true;
         google.script.run.withSuccessHandler(phoneMatches => {
           if (phoneMatches.length > 0) {
-             presentDuplicateOption(phoneMatches[0], payload); // Found via Phone
-             resetSaveBtn();
+             presentDuplicateOption(phoneMatches[0], payload); resetSaveBtn();
           } else {
-             // 2. No Phone match? Check Email.
              google.script.run.withSuccessHandler(emailMatches => {
                 if (emailMatches.length > 0) {
-                   presentDuplicateOption(emailMatches[0], payload); // Found via Email
-                   resetSaveBtn();
+                   presentDuplicateOption(emailMatches[0], payload); resetSaveBtn();
                 } else {
-                   // 3. CLEAN! No matches found. Proceed to Create.
-                   executeOwnerSave(payload, false); // false = is not a merge
+                   executeOwnerSave(payload, false);
                 }
              }).apiSearchOwners(payload['Email']);
           }
         }).apiSearchOwners(payload['Phone']);
-        
-        return; // Stop here, let the async callbacks handle the rest
+        return; 
       }
-
-      // If existing client, just save normal
       executeOwnerSave(payload, true);
     };
 
     function resetSaveBtn() {
        const btn = container.querySelector('#btnSaveOwner');
-       btn.textContent = 'Save & Select Pet';
-       btn.disabled = false;
+       btn.textContent = 'Save & Select Pet'; btn.disabled = false;
     }
 
-    // HANDLE DUPLICATE FOUND
-    let pendingMergeId = null; // Store the ID of the record we found
-
+    let pendingMergeId = null; 
     function presentDuplicateOption(foundRecord, currentFormData) {
        pendingMergeId = foundRecord.ownerId;
-       
-       // 1. Show Warning UI
        const warn = container.querySelector('#duplicateWarning');
        const actions = container.querySelector('#defaultOwnerActions');
-       const card = container.querySelector('#dupCard');
-
-       warn.classList.remove('hidden');
-       actions.classList.add('hidden');
-
-       // 2. Display Found Data
-       card.innerHTML = `
+       warn.classList.remove('hidden'); actions.classList.add('hidden');
+       container.querySelector('#dupCard').innerHTML = `
          <strong>Existing Record (ID: ${foundRecord.ownerId})</strong><br>
          ${foundRecord.firstName} ${foundRecord.lastName}<br>
          ${foundRecord.phone} | ${foundRecord.email}<br>
@@ -519,66 +467,33 @@
        `;
     }
 
-    // MERGE BUTTON ACTION
     container.querySelector('#btnMerge').onclick = () => {
        const payload = validateOwnerForm();
        if (!payload || !pendingMergeId) return;
-
-       // Inject the Found ID into the payload
        payload['Owner ID'] = pendingMergeId;
-       
-       // Execute Save (which will now be an Update because ID exists)
-       // TRUE = Treat as Existing Client flow (show pets)
        executeOwnerSave(payload, true); 
     };
 
     container.querySelector('#btnCancelMerge').onclick = () => {
-       // Hide Warning, Show Save button again
        container.querySelector('#duplicateWarning').classList.add('hidden');
        container.querySelector('#defaultOwnerActions').classList.remove('hidden');
        pendingMergeId = null;
     };
 
-    // CORE SAVE FUNCTION
     function executeOwnerSave(payload, treatAsExisting) {
-       // Visual Feedback depends on context
-       const btn = treatAsExisting 
-          ? container.querySelector('#btnMerge') // If merging, feedback on Merge btn
-          : container.querySelector('#btnSaveOwner'); // Else, feedback on Save btn
-       
-       if(btn) {
-         btn.textContent = 'Saving...';
-         btn.disabled = true;
-       }
+       const btn = treatAsExisting ? container.querySelector('#btnMerge') : container.querySelector('#btnSaveOwner');
+       if(btn) { btn.textContent = 'Saving...'; btn.disabled = true; }
 
        google.script.run.withSuccessHandler(id => {
-          // Restore buttons (in case we come back)
-          if(btn) {
-             btn.textContent = treatAsExisting ? 'Merge Records' : 'Save & Select Pet';
-             btn.disabled = false;
-          }
-          
-          // Sync State
+          if(btn) { btn.textContent = treatAsExisting ? 'Merge Records' : 'Save & Select Pet'; btn.disabled = false; }
           container.querySelector('#ownerId').value = id;
           payload['Owner ID'] = id;
           TX.originalOwnerState = JSON.stringify(payload);
           TX.owner = { ...payload, ownerId: id };
-
-          // Hide Merge UI if it was open
           container.querySelector('#duplicateWarning').classList.add('hidden');
           container.querySelector('#defaultOwnerActions').classList.remove('hidden');
-
-          // 🔹 CRITICAL FLOW BRANCH
-          if (treatAsExisting) {
-             // Merged or Existing -> Search for Pets
-             showPetModal(id);
-          } else {
-             // True New Client -> Skip Pet Search, Go to Empty Pet Form
-             TX.pet = null;
-             populatePetForm({});
-             nextStep('step-owner', 'step-pet');
-          }
-
+          if (treatAsExisting) showPetModal(id);
+          else { TX.pet = null; populatePetForm({}); nextStep('step-owner', 'step-pet'); }
        }).apiUpsertOwner(payload, TX.scheduler);
     }
 
@@ -596,29 +511,22 @@
         </div>
       `;
       document.body.appendChild(modal);
-      
       const list = modal.querySelector('#petList');
       list.innerHTML = '<div class="spinner"></div>';
 
       google.script.run.withSuccessHandler(pets => {
         list.innerHTML = '';
         if(!pets.length) list.innerHTML = '<p>No active pets found.</p>';
-        
         pets.forEach(p => {
-          // 1. Build details string safely (filtering out empty values)
           const details = [p.breed, p.sex, p.color].filter(x => x && String(x).trim() !== '').join(' • ');
-
           const card = document.createElement('div');
           card.className = 'card';
-          // 2. Updated Card HTML
           card.innerHTML = `
             <div style="font-size:1.1rem;"><strong>${p.name}</strong> <span style="font-size:0.9rem; color:#666;">(${p.species})</span></div>
             <div style="color:#444; margin-top:0.25rem;">${details}</div>
-            
             <div style="margin-top:0.75rem; border-top:1px solid #eee; padding-top:0.5rem;">
                <button class="btn-sm-status btn secondary" style="font-size:0.8rem; padding: 4px 10px;">Update Status</button>
             </div>
-            
             <div class="status-edit hidden" style="margin-top:0.5rem; background:#f9fafb; padding:8px; border-radius:4px; border:1px solid #eee;">
                <div style="margin-bottom:4px; font-weight:600; font-size:0.85rem;">Mark as:</div>
                <select class="pStat" style="width:100%; margin-bottom:0.5rem; padding:4px;"><option>Rehomed</option><option>Deceased</option></select>
@@ -628,111 +536,89 @@
                </div>
             </div>
           `;
-          
-          // Click handler for the card (Select Pet)
           card.addEventListener('click', (e) => {
-             // Ignore clicks inside the status panel or on the status button
              if(e.target.closest('.status-edit') || e.target.classList.contains('btn-sm-status')) return;
-             
              TX.pet = p;
              modal.remove();
              populatePetForm(p);
              nextStep('step-owner', 'step-pet');
           });
-
           const statBtn = card.querySelector('.btn-sm-status');
           const statPanel = card.querySelector('.status-edit');
           const saveStat = card.querySelector('.btn-save-stat');
-          
-          // Toggle the status panel
-          statBtn.onclick = (e) => { 
-            e.stopPropagation(); 
-            statPanel.classList.toggle('hidden'); 
-          };
-          
-          // Save Status Action
+          statBtn.onclick = (e) => { e.stopPropagation(); statPanel.classList.toggle('hidden'); };
           saveStat.onclick = (e) => {
              e.stopPropagation();
              const newStat = card.querySelector('.pStat').value;
              const note = card.querySelector('.pNote').value;
-             
-             saveStat.textContent = 'Saving...';
-             saveStat.disabled = true;
-
+             saveStat.textContent = 'Saving...'; saveStat.disabled = true;
              google.script.run.withSuccessHandler(() => {
-                // Visual feedback: dim the card and show message
-                card.style.opacity = '0.5';
-                card.style.pointerEvents = 'none'; // Prevent selection
+                card.style.opacity = '0.5'; card.style.pointerEvents = 'none';
                 card.innerHTML = `<div style="padding:1rem; text-align:center; color:#dc2626;"><strong>Marked as ${newStat}</strong></div>`;
-                
-                // Optional: Remove from list after a second?
-                // setTimeout(() => card.remove(), 1500); 
              }).apiUpdatePetStatus(p.petId, newStat, note, TX.scheduler);
           };
-
           list.appendChild(card);
         });
       }).apiGetOwnerPets(ownerId);
 
       modal.querySelector('#btnAddPet').onclick = () => {
-         TX.pet = null;
-         modal.remove();
-         populatePetForm({});
-         nextStep('step-owner', 'step-pet');
+         TX.pet = null; modal.remove(); populatePetForm({}); nextStep('step-owner', 'step-pet');
       };
     }
 
     // Step 6: Pet Form
-    // Step 6: Pet Form
     function populatePetForm(p) {
-      // 1. Clear all fields first
-      const ids = ['petId','pName','pSpecies','pBreed1','pBreed2','pColor','pPattern','pSex','pFixed','pAge','pWeight'];
-      ids.forEach(id => {
-         const el = container.querySelector('#'+id);
-         if(el) el.value = '';
-      });
-      
-      // 2. Map Data to Fields
+      const ids = ['petId','pName','pSpecies','pBreed1','pBreed2','pColor','pPattern','pSex','pFixed','pAgeY','pAgeM','pWeight'];
+      ids.forEach(id => { const el = container.querySelector('#'+id); if(el) el.value = ''; });
+
       if(p.petId) container.querySelector('#petId').value = p.petId;
       if(p.name) container.querySelector('#pName').value = p.name;
       if(p.species) container.querySelector('#pSpecies').value = p.species;
-      
-      // 🔹 FIX: Map Breed 1 & Breed 2
       if(p.breed) container.querySelector('#pBreed1').value = p.breed;
-      if(p.breed2) container.querySelector('#pBreed2').value = p.breed2; // Now handling Breed 2
-      
+      if(p.breed2) container.querySelector('#pBreed2').value = p.breed2; 
       if(p.color) container.querySelector('#pColor').value = p.color;
       if(p.pattern) container.querySelector('#pPattern').value = p.pattern;
-      
-      if(p.age) container.querySelector('#pAge').value = p.age;
-      if(p.weight) container.querySelector('#pWeight').value = p.weight;
-      
-      // Dropdowns (Sex / Fixed)
-      // Browsers will auto-select if the value matches one of the <option> values exactly
       if(p.sex) container.querySelector('#pSex').value = p.sex;
       if(p.fixed) container.querySelector('#pFixed').value = p.fixed;
+
+      // 🔹 UPDATED: Parse Age & Weight
+      if (p.age) {
+        const matches = p.age.match(/\d+/g);
+        if (matches) {
+            if (matches.length > 0) container.querySelector('#pAgeY').value = matches[0];
+            if (matches.length > 1) container.querySelector('#pAgeM').value = matches[1];
+        } else {
+            container.querySelector('#pAgeY').value = p.age.replace(/\D/g, '');
+        }
+      }
+      if (p.weight) {
+        container.querySelector('#pWeight').value = String(p.weight).replace(/[^\d.]/g, '');
+      }
     }
 
     container.querySelector('#btnSavePet').onclick = () => {
+      // 🔹 UPDATED: Proper Case & Age Logic
+      const y = container.querySelector('#pAgeY').value || '0';
+      const m = container.querySelector('#pAgeM').value || '0';
+      const w = container.querySelector('#pWeight').value;
+
       const payload = {
         'Pet ID': container.querySelector('#petId').value,
         'Owner ID': TX.owner.ownerId,
-        'Pet Name': container.querySelector('#pName').value,
-        'Species': container.querySelector('#pSpecies').value,
-        'Primary Breed': container.querySelector('#pBreed1').value,
-        'Secondary Breed': container.querySelector('#pBreed2').value,
-        'Color': container.querySelector('#pColor').value,
-        'Color Pattern': container.querySelector('#pPattern').value,
+        'Pet Name': toProperCase(container.querySelector('#pName').value.trim()),
+        'Species': toProperCase(container.querySelector('#pSpecies').value),
+        'Primary Breed': toProperCase(container.querySelector('#pBreed1').value.trim()),
+        'Secondary Breed': toProperCase(container.querySelector('#pBreed2').value.trim()),
+        'Color': toProperCase(container.querySelector('#pColor').value.trim()),
+        'Color Pattern': toProperCase(container.querySelector('#pPattern').value.trim()),
         'Sex': container.querySelector('#pSex').value,
         'Altered': container.querySelector('#pFixed').value,
-        'Age': container.querySelector('#pAge').value,
-        'Weight': container.querySelector('#pWeight').value
+        'Age': `${y} years, ${m} months`,
+        'Weight': w ? `${w} pounds` : ''
       };
 
       const btn = container.querySelector('#btnSavePet');
-      btn.textContent = 'Saving...';
-      btn.disabled = true;
-
+      btn.textContent = 'Saving...'; btn.disabled = true;
       google.script.run.withSuccessHandler(id => {
          TX.pet = { ...payload, petId: id };
          prepDetails();
@@ -743,206 +629,145 @@
     // Step 7: Details
     function prepDetails() {
       container.querySelector('#dispType').textContent = TX.type;
-      if(TX.isRogue) {
-         container.querySelector('#dispSlot').textContent = `EXCEPTION: ${TX.rogueData.date} @ ${TX.rogueData.time}`;
-      } else {
-         container.querySelector('#dispSlot').textContent = `${TX.slot.day} ${TX.slot.date} @ ${TX.slot.time}`;
-      }
+      if(TX.isRogue) container.querySelector('#dispSlot').textContent = `EXCEPTION: ${TX.rogueData.date} @ ${TX.rogueData.time}`;
+      else container.querySelector('#dispSlot').textContent = `${TX.slot.day} ${TX.slot.date} @ ${TX.slot.time}`;
       container.querySelector('#dispOwner').textContent = TX.owner['First Name'] + ' ' + TX.owner['Last Name'];
       container.querySelector('#dispPet').textContent = TX.pet['Pet Name'];
 
-      const species = TX.pet['Species'];
-      const vacList = container.querySelector('#vaccines');
-      const svcList = container.querySelector('#services');
-      
       google.script.run.withSuccessHandler(res => {
-         const lists = { canine: res.canine, feline: res.feline };
-         const opts = (species === 'Canine') ? lists.canine : (species === 'Feline' ? lists.feline : []);
-         vacList.innerHTML = opts.length 
-           ? opts.map(v => `<label class="radio-option"><input type="checkbox" name="vaccine" value="${v}"> ${v}</label>`).join('')
-           : '<p>No vaccines available</p>';
+         const opts = (TX.pet['Species'] === 'Canine') ? res.canine : (TX.pet['Species'] === 'Feline' ? res.feline : []);
+         container.querySelector('#vaccines').innerHTML = opts.length ? opts.map(v => `<label class="radio-option"><input type="checkbox" name="vaccine" value="${v}"> ${v}</label>`).join('') : '<p>No vaccines available</p>';
       }).apiGetVaccineLists();
 
       google.script.run.withSuccessHandler(res => {
-         svcList.innerHTML = res.services.map(s => 
-           `<label class="radio-option"><input type="checkbox" name="service" value="${s}"> ${s}</label>`).join('');
+         container.querySelector('#services').innerHTML = res.services.map(s => `<label class="radio-option"><input type="checkbox" name="service" value="${s}"> ${s}</label>`).join('');
       }).apiGetAdditionalServices();
     }
 
-    container.querySelector('#btnFinalize').onclick = () => {
-       // Validate Notes are present
-       const notes = container.querySelector('#aNotes').value.trim();
-       if (!notes) {
-         alert('Please add a note to this appointment before finishing.');
-         // Optional: focus the field so they see it
-         container.querySelector('#aNotes').focus();
-         return;
-       }
+    // 🔹 UPDATED: Allergy Toggle Logic
+    container.querySelectorAll('input[name="hasAllergy"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            const txt = container.querySelector('#aAllergyText');
+            if (e.target.value === 'Yes') {
+                txt.classList.remove('hidden'); txt.focus();
+            } else {
+                txt.classList.add('hidden'); txt.value = '';
+            }
+        });
+    });
 
+    container.querySelector('#btnFinalize').onclick = () => {
+       const notes = container.querySelector('#aNotes').value.trim();
+       if (!notes) { alert('Please add a note to this appointment before finishing.'); container.querySelector('#aNotes').focus(); return; }
        showTransportModal();
     };
 
     // Step 8: Transport Modal
     function showTransportModal() {
-      const hasVetRecords = container.querySelector('input[name="hasRec"]:checked')?.value === 'Yes';
+      const hasRec = container.querySelector('input[name="hasRec"]:checked')?.value === 'Yes';
       const modal = document.createElement('div');
       modal.className = 'modal';
-
-      let inner = `
+      modal.innerHTML = `
         <div class="modal-content">
           <p>Does this client require transportation assistance?</p>
-          <div class="actions transport-actions">
-            <button class="btn secondary transportBtn" data-val="Yes">Yes</button>
-            <button class="btn secondary transportBtn" data-val="No">No</button>
-          </div>
+          <div class="actions transport-actions"><button class="btn secondary transportBtn" data-val="Yes">Yes</button><button class="btn secondary transportBtn" data-val="No">No</button></div>
           <hr class="divider">
-          ${hasVetRecords ? `
-            <p>You indicated the client has previous veterinary records. Please upload, send request, or remind.</p>
+          ${hasRec ? `<p>Previous records indicated. Please upload or request.</p>
             <div class="actions record-actions">
               <input type="file" id="recordsUpload" multiple style="display:none;">
               <button id="uploadBtn" class="btn secondary recordBtn">Upload</button>
               <button id="sendRequestBtn" class="btn secondary recordBtn">Request</button>
               <button id="remindLaterBtn" class="btn secondary recordBtn">Remind</button>
-            </div>
-            <div id="uploadList" class="upload-list"></div>
-            <div id="modalToast"></div>
-          ` : ``}
-        </div>
-      `;
-      modal.innerHTML = inner;
+            </div><div id="modalToast"></div>` : ``}
+        </div>`;
       document.body.appendChild(modal);
 
-      const toast = (msg, k) => { 
-          const t = modal.querySelector('#modalToast'); 
-          if(t) { t.textContent = msg; t.className = k==='error'?'error':'success-message'; }
-      };
-
       let transport = null;
+      const toast = (m,k) => { const t = modal.querySelector('#modalToast'); if(t){t.textContent=m;t.className=k;} };
+
       modal.querySelectorAll('.transportBtn').forEach(b => {
          b.onclick = () => {
-            modal.querySelectorAll('.transportBtn').forEach(x => {
-                x.classList.remove('selected');
-                x.classList.add('secondary'); 
-                x.style.background = '';
-                x.style.color = '';
-            });
-
-            b.classList.remove('secondary');
-            b.classList.add('selected');
-            
+            modal.querySelectorAll('.transportBtn').forEach(x => { x.classList.remove('selected'); x.classList.add('secondary'); });
+            b.classList.remove('secondary'); b.classList.add('selected');
             transport = b.dataset.val;
-
-            if(!hasVetRecords) {
-               modal.remove();
-               doBook(transport);
-            } 
+            if(!hasRec) { modal.remove(); doBook(transport); }
          };
       });
 
-      if(hasVetRecords) {
-          const highlightRecordBtn = (activeId) => {
-              modal.querySelectorAll('.recordBtn').forEach(btn => {
-                  if (btn.id === activeId) {
-                      btn.classList.remove('secondary');
-                      btn.classList.add('selected');
-                  } else {
-                      btn.classList.add('secondary');
-                      btn.classList.remove('selected');
-                  }
-              });
-          };
-
+      if(hasRec) {
+          const highlight = (id) => modal.querySelectorAll('.recordBtn').forEach(b => { if(b.id===id) {b.classList.add('selected'); b.classList.remove('secondary');} else {b.classList.add('secondary'); b.classList.remove('selected');} });
           modal.querySelector('#uploadBtn').onclick = () => {
-              highlightRecordBtn('uploadBtn');
-              const input = modal.querySelector('#recordsUpload');
-              input.click();
+              highlight('uploadBtn');
+              const input = modal.querySelector('#recordsUpload'); input.click();
               input.onchange = () => {
-                 const files = [...input.files];
-                 if(!files.length) return;
-                 
+                 const files = [...input.files]; if(!files.length) return;
                  google.script.run.withSuccessHandler(res => {
-                    if(!res.ok) return toast('Folder error', 'error');
-                    let done = 0;
+                    if(!res.ok) return toast('Folder error','error');
+                    let done=0;
                     files.forEach(f => {
                        const reader = new FileReader();
                        reader.onload = e => {
-                          const b64 = e.target.result.split(',')[1];
                           google.script.run.withSuccessHandler(() => {
-                             done++;
-                             if(done === files.length) {
-                                toast('Uploaded!', 'success');
-                                setTimeout(() => { modal.remove(); doBook(transport); }, 1000);
-                             }
-                          }).apiUploadVetRecord(f.name, b64, res.folderId);
+                             done++; if(done===files.length) { toast('Uploaded!','success'); setTimeout(() => { modal.remove(); doBook(transport); }, 1000); }
+                          }).apiUploadVetRecord(f.name, e.target.result.split(',')[1], res.folderId);
                        };
                        reader.readAsDataURL(f);
                     });
                  }).apiCreateVetRecordsFolder(TX.owner['First Name'], TX.owner['Last Name'], TX.pet['Pet Name'], TX.owner['Email']);
               };
           };
-
           modal.querySelector('#sendRequestBtn').onclick = () => {
-             highlightRecordBtn('sendRequestBtn');
-             const btn = modal.querySelector('#sendRequestBtn');
-             btn.textContent = 'Sending...';
-             google.script.run.withSuccessHandler(res => {
-                if(res.ok) {
-                   toast('Sent!', 'success');
-                   setTimeout(() => { modal.remove(); doBook(transport); }, 1000);
-                } else toast('Error sending', 'error');
-             }).apiSendVetRecordsRequest(TX.owner['Email'], '', TX.owner['First Name'], TX.pet['Pet Name']);
+             highlight('sendRequestBtn');
+             modal.querySelector('#sendRequestBtn').textContent = 'Sending...';
+             google.script.run.withSuccessHandler(res => { if(res.ok) { toast('Sent!','success'); setTimeout(() => { modal.remove(); doBook(transport); }, 1000); } else toast('Error','error'); }).apiSendVetRecordsRequest(TX.owner['Email'], '', TX.owner['First Name'], TX.pet['Pet Name']);
           };
-
           modal.querySelector('#remindLaterBtn').onclick = () => {
-             highlightRecordBtn('remindLaterBtn');
-             const btn = modal.querySelector('#remindLaterBtn');
-             btn.textContent = 'Sending...';
-             const card = `${TX.slot ? TX.slot.date : TX.rogueData.date}`;
-             google.script.run.withSuccessHandler(res => {
-                if(res.ok) {
-                   toast('Reminder set!', 'success');
-                   setTimeout(() => { modal.remove(); doBook(transport); }, 1000);
-                }
-             }).apiSendVetRecordReminder(TX.scheduler, TX.pet['Pet Name'], card);
+             highlight('remindLaterBtn');
+             modal.querySelector('#remindLaterBtn').textContent = 'Sending...';
+             google.script.run.withSuccessHandler(res => { if(res.ok) { toast('Reminder set!','success'); setTimeout(() => { modal.remove(); doBook(transport); }, 1000); } }).apiSendVetRecordReminder(TX.scheduler, TX.pet['Pet Name'], TX.slot ? TX.slot.date : TX.rogueData.date);
           };
       }
     }
 
     // Step 9: Book
     function doBook(transport) {
-       const loading = container.querySelector('#step-loading');
-       const details = container.querySelector('#step-details');
-       details.classList.add('hidden');
-       loading.classList.remove('hidden');
+       container.querySelector('#step-loading').classList.remove('hidden');
+       container.querySelector('#step-details').classList.add('hidden');
+
+       // 🔹 UPDATED: Allergy Logic
+       const allergyChoice = container.querySelector('input[name="hasAllergy"]:checked')?.value || 'No';
+       const allergyDetail = container.querySelector('#aAllergyText').value.trim();
+       const finalAllergy = (allergyChoice === 'Yes' && allergyDetail) ? allergyDetail : 'None Known';
 
        const payload = {
           'Owner ID': TX.owner.ownerId,
           'Pet ID': TX.pet.petId,
-          'First Name': TX.owner['First Name'],
-          'Last Name': TX.owner['Last Name'],
+          // 🔹 UPDATED: Proper Case
+          'First Name': toProperCase(TX.owner['First Name']),
+          'Last Name': toProperCase(TX.owner['Last Name']),
           'Phone Number': TX.owner['Phone'],
-          'Email': TX.owner['Email'],
-          'Address': TX.owner['Street Address'], 
-          'Street Address': TX.owner['Street Address'],
-          'City': TX.owner['City'],
-          'State': TX.owner['State'],
+          'Email': toProperCase(TX.owner['Email']),
+          'Address': toProperCase(TX.owner['Street Address']),
+          'Street Address': toProperCase(TX.owner['Street Address']),
+          'City': toProperCase(TX.owner['City']),
+          'State': toProperCase(TX.owner['State']),
           'Zip Code': TX.owner['Zip Code'],
           
-          'Pet Name': TX.pet['Pet Name'],
-          'Species': TX.pet['Species'],
-          'Breed One': TX.pet['Primary Breed'],
-          'Breed Two': TX.pet['Secondary Breed'],
-          'Color': TX.pet['Color'],
-          'Color Pattern': TX.pet['Color Pattern'],
+          'Pet Name': toProperCase(TX.pet['Pet Name']),
+          'Species': toProperCase(TX.pet['Species']),
+          'Breed One': toProperCase(TX.pet['Primary Breed']),
+          'Breed Two': toProperCase(TX.pet['Secondary Breed']),
+          'Color': toProperCase(TX.pet['Color']),
+          'Color Pattern': toProperCase(TX.pet['Color Pattern']),
           'Sex': TX.pet['Sex'],
           'Spayed or Neutered': TX.pet['Altered'],
-          'Age': TX.pet['Age'],
+          'Age': TX.pet['Age'], 
           'Weight': TX.pet['Weight'],
 
           'Transportation Needed': transport,
           'Notes': container.querySelector('#aNotes').value,
-          'Vet Office Name': container.querySelector('#aVet').value,
-          'Allergies or Sensitivities': container.querySelector('#aAllergy').value,
+          'Vet Office Name': toProperCase(container.querySelector('#aVet').value.trim()),
+          'Allergies or Sensitivities': finalAllergy,
           
           'Vaccines Needed': [...container.querySelectorAll('input[name="vaccine"]:checked')].map(el => el.value).join(', '),
           'Additional Services': [...container.querySelectorAll('input[name="service"]:checked')].map(el => el.value).join(', '),
@@ -976,12 +801,8 @@
              </div>
           </div>
        `;
-       
        const currentOwner = TX.owner;
-       container.querySelector('#btnBookNext').onclick = () => {
-          // Re-enter with persistent owner
-          renderScheduleFlow(container, currentOwner);
-       };
+       container.querySelector('#btnBookNext').onclick = () => renderScheduleFlow(container, currentOwner);
     }
   };
 })();
