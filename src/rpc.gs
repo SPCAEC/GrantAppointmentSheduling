@@ -472,12 +472,11 @@ function apiGetVaccineLists() {
         'Rabies', 
         'Distemper (DA2PP)', 
         'Bordetella', 
-        'Leptospirosis', 
-        'Lyme'
+        'Leptospirosis'
       ],
       feline: [
-        'Rabies', 
         'FVRCP', 
+        'Rabies', 
         'FeLV'
       ]
     };
@@ -491,9 +490,9 @@ function apiGetAdditionalServices() {
         'Microchip', 
         'Nail Trim', 
         'Dewormer', 
-        'Hernia Repair',
-        'Flea/Tick Prevention',
-        'Dental'
+        'Flea/Tick Treatment',
+        'Standard Exam',
+        'Other - please clarify in the note'
       ]
     };
   });

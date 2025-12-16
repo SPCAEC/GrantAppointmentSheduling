@@ -185,7 +185,7 @@
         </div>
         <div class="field"><label>Vet Office</label><input id="aVet"></div>
         <div class="field"><label>Allergies</label><input id="aAllergy"></div>
-        <div class="field"><label>Notes</label><textarea id="aNotes"></textarea></div>
+        <div class="field"><label>Notes <span style="color:red">*</span></label><textarea id="aNotes"></textarea></div>
         
         <div class="actions">
           <button id="btnFinalize" class="btn">Finish</button>
@@ -770,6 +770,15 @@
     }
 
     container.querySelector('#btnFinalize').onclick = () => {
+       // Validate Notes are present
+       const notes = container.querySelector('#aNotes').value.trim();
+       if (!notes) {
+         alert('Please add a note to this appointment before finishing.');
+         // Optional: focus the field so they see it
+         container.querySelector('#aNotes').focus();
+         return;
+       }
+
        showTransportModal();
     };
 
