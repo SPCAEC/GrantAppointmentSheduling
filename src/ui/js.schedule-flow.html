@@ -605,22 +605,35 @@
         if(!pets.length) list.innerHTML = '<p>No active pets found.</p>';
         
         pets.forEach(p => {
+          // 1. Build details string safely (filtering out empty values)
+          const details = [p.breed, p.sex, p.color].filter(x => x && String(x).trim() !== '').join(' • ');
+
           const card = document.createElement('div');
           card.className = 'card';
+          // 2. Updated Card HTML
           card.innerHTML = `
-            <strong>${p.name}</strong> (${p.species})<br>${p.breed}<br>
-            <div style="margin-top:0.5rem; border-top:1px solid #eee; padding-top:0.5rem;">
-               <button class="btn-sm-status" style="font-size:0.8rem; background:none; border:none; color:blue; cursor:pointer;">Update Status</button>
+            <div style="font-size:1.1rem;"><strong>${p.name}</strong> <span style="font-size:0.9rem; color:#666;">(${p.species})</span></div>
+            <div style="color:#444; margin-top:0.25rem;">${details}</div>
+            
+            <div style="margin-top:0.75rem; border-top:1px solid #eee; padding-top:0.5rem;">
+               <button class="btn-sm-status btn secondary" style="font-size:0.8rem; padding: 4px 10px;">Update Status</button>
             </div>
-            <div class="status-edit hidden" style="margin-top:0.5rem; background:#f9fafb; padding:4px;">
-               <select class="pStat"><option>Rehomed</option><option>Deceased</option></select>
-               <input class="pNote" placeholder="Note (e.g. date passed)" style="width:90%; margin-top:4px;">
-               <button class="btn-save-stat btn tertiary" style="font-size:0.8rem; margin-top:4px;">Save</button>
+            
+            <div class="status-edit hidden" style="margin-top:0.5rem; background:#f9fafb; padding:8px; border-radius:4px; border:1px solid #eee;">
+               <div style="margin-bottom:4px; font-weight:600; font-size:0.85rem;">Mark as:</div>
+               <select class="pStat" style="width:100%; margin-bottom:0.5rem; padding:4px;"><option>Rehomed</option><option>Deceased</option></select>
+               <input class="pNote" placeholder="Note (optional)" style="width:100%; margin-bottom:0.5rem; padding:4px; box-sizing:border-box;">
+               <div style="text-align:right;">
+                  <button class="btn-save-stat btn" style="font-size:0.8rem; padding:4px 12px; background:#dc2626; border-color:#dc2626;">Confirm Change</button>
+               </div>
             </div>
           `;
           
+          // Click handler for the card (Select Pet)
           card.addEventListener('click', (e) => {
+             // Ignore clicks inside the status panel or on the status button
              if(e.target.closest('.status-edit') || e.target.classList.contains('btn-sm-status')) return;
+             
              TX.pet = p;
              modal.remove();
              populatePetForm(p);
@@ -631,16 +644,29 @@
           const statPanel = card.querySelector('.status-edit');
           const saveStat = card.querySelector('.btn-save-stat');
           
-          statBtn.onclick = (e) => { e.stopPropagation(); statPanel.classList.toggle('hidden'); };
+          // Toggle the status panel
+          statBtn.onclick = (e) => { 
+            e.stopPropagation(); 
+            statPanel.classList.toggle('hidden'); 
+          };
           
+          // Save Status Action
           saveStat.onclick = (e) => {
              e.stopPropagation();
              const newStat = card.querySelector('.pStat').value;
              const note = card.querySelector('.pNote').value;
-             saveStat.textContent = '...';
+             
+             saveStat.textContent = 'Saving...';
+             saveStat.disabled = true;
+
              google.script.run.withSuccessHandler(() => {
+                // Visual feedback: dim the card and show message
                 card.style.opacity = '0.5';
-                card.innerHTML = `<em style="color:red;">Marked as ${newStat}</em>`;
+                card.style.pointerEvents = 'none'; // Prevent selection
+                card.innerHTML = `<div style="padding:1rem; text-align:center; color:#dc2626;"><strong>Marked as ${newStat}</strong></div>`;
+                
+                // Optional: Remove from list after a second?
+                // setTimeout(() => card.remove(), 1500); 
              }).apiUpdatePetStatus(p.petId, newStat, note, TX.scheduler);
           };
 
