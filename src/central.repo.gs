@@ -14,77 +14,81 @@ function getHistorySs_() {
  * Search Owners by Phone, Email, or ID
  * Returns array of matches
  */
+/**
+ * Search Owners with STRICT Type Detection
+ * Prevents cross-matching emails against phone numbers.
+ */
 function findOwnersInDb_(query) {
   const ss = getCentralSs_();
   const sh = ss.getSheetByName(CFG.TABS.OWNERS);
   const data = sh.getDataRange().getValues();
   
-  // Extract and Trim Headers
-  // We use shift() to remove the header row from the data array so 'data' is just content
   const headers = data.shift().map(h => String(h).trim().toLowerCase());
-  
-  // Map headers to column indices
   const hMap = {};
-  headers.forEach((h, i) => {
-    hMap[h] = i;
-  });
+  headers.forEach((h, i) => hMap[h] = i);
   
-  // 1. Prepare the Search Query
   const q = String(query || '').trim().toLowerCase();
-  const qCleanPhone = q.replace(/\D/g, ''); // Strip everything except digits (e.g. "7162429167")
   
-  // 2. Define Exact Column Names (Lowercased for lookup)
-  // We check if the column exists to prevent crashing if the sheet changes
-  const idxId = hMap['owner id'];
+  // ─── STRICT MODE DETECTION ───
+  // 1. Is it an Email? (Contains '@')
+  const isEmailSearch = q.includes('@');
+  
+  // 2. Is it a Phone Number? (No '@', and contains significant digits)
+  // We require at least 7 digits to consider it a phone search to avoid matching IDs like "123" against phone numbers
+  const qCleanPhone = q.replace(/\D/g, '');
+  const isPhoneSearch = !isEmailSearch && qCleanPhone.length >= 7;
+
+  // 3. Is it an ID? (Neither of the above, or specific format)
+  // We'll allow ID checks on non-email searches
+  const isIdSearch = !isEmailSearch;
+
+  // Column Indices
+  const idxId    = hMap['owner id'];
   const idxFirst = hMap['first name'];
-  const idxLast = hMap['last name'];
+  const idxLast  = hMap['last name'];
   const idxEmail = hMap['email'];
-  const idxPhone = hMap['phone number']; // STRICT MATCH as requested
-  
-  // Address fields for the return object
+  const idxPhone = hMap['phone number']; 
   const idxAddress = hMap['street address'] !== undefined ? hMap['street address'] : hMap['address'];
-  const idxCity = hMap['city'];
+  const idxCity  = hMap['city'];
   const idxState = hMap['state'];
-  const idxZip = hMap['zip code'] !== undefined ? hMap['zip code'] : hMap['zip'];
+  const idxZip   = hMap['zip code'] !== undefined ? hMap['zip code'] : hMap['zip'];
   const idxNotes = hMap['general notes'];
 
   const matches = [];
 
-  // 3. Loop through data rows
   data.forEach((row, i) => {
-    // Safely get values, defaulting to empty string if column missing
     const id = idxId !== undefined ? String(row[idxId] || '') : '';
-    const email = idxEmail !== undefined ? String(row[idxEmail] || '').toLowerCase() : '';
-    
-    // Get the phone from the sheet and clean it immediately
-    const rawPhone = idxPhone !== undefined ? String(row[idxPhone] || '') : '';
-    const dbPhoneClean = rawPhone.replace(/\D/g, ''); // Turns "(716) 242-9167" into "7162429167"
     
     // MATCH LOGIC
     let isMatch = false;
     
-    // A. ID Match (Exact)
-    if (q && id.toLowerCase() === q) isMatch = true;
+    if (isEmailSearch) {
+      // 📧 Strict Email Check
+      const email = idxEmail !== undefined ? String(row[idxEmail] || '').toLowerCase() : '';
+      if (email === q) isMatch = true;
     
-    // B. Email Match (Exact, case-insensitive)
-    if (q && email === q) isMatch = true;
-    
-    // C. Phone Match (Cleaned digits)
-    // We check if the database phone includes the search query. 
-    // e.g. Search "2429167" will match "7162429167"
-    // We require at least 4 digits to search to avoid matching every row with a "1"
-    if (qCleanPhone.length >= 4 && dbPhoneClean.includes(qCleanPhone)) {
-      isMatch = true;
+    } else if (isPhoneSearch) {
+      // 📞 Strict Phone Check
+      const rawPhone = idxPhone !== undefined ? String(row[idxPhone] || '') : '';
+      const dbPhoneClean = rawPhone.replace(/\D/g, '');
+      if (dbPhoneClean.includes(qCleanPhone)) isMatch = true;
+      
+      // Also allow exact ID match in phone mode (edge case)
+      if (id.toLowerCase() === q) isMatch = true;
+
+    } else if (isIdSearch) {
+      // 🆔 Fallback ID Check (for short queries like "101")
+      if (id.toLowerCase() === q) isMatch = true;
     }
     
     if (isMatch) {
       matches.push({
-        rowIndex: i + 2, // 1-based index (Header is row 1, this loop starts at row 2)
+        rowIndex: i + 2, 
         ownerId: id,
         firstName: idxFirst !== undefined ? row[idxFirst] : '',
         lastName: idxLast !== undefined ? row[idxLast] : '',
-        email: email,
-        phone: rawPhone, // Return the original formatted phone for display
+        email: idxEmail !== undefined ? row[idxEmail] : '',
+        phone: idxPhone !== undefined ? row[idxPhone] : '',
         address: idxAddress !== undefined ? row[idxAddress] : '', 
         city: idxCity !== undefined ? row[idxCity] : '',
         state: idxState !== undefined ? row[idxState] : '',
