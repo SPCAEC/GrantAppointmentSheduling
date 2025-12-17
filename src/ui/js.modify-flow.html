@@ -3,6 +3,12 @@
   const { $, $$, sectionTitle } = window.SPCA || {};
   const SCHEDULER = () => (typeof getSchedulerName === 'function' ? getSchedulerName() : 'Staff');
 
+  // ─── HELPER: Proper Case ─────────────────────────────
+  function toProperCase(str) {
+    if (!str) return '';
+    return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+  }
+
   // ─── PUBLIC ENTRY ────────────────────────────────────
   window.renderModifyFlow = function renderModifyFlow(container) {
     // 1. Identity Check
@@ -157,10 +163,25 @@
           <div class="field"><label>Sex</label><select id="pSex"><option>Male</option><option>Female</option><option>Unknown</option></select></div>
           <div class="field"><label>Spayed/Neutered</label><select id="pFixed"><option>Spayed</option><option>Neutered</option><option>No</option><option>Unknown</option></select></div>
         </div>
-        <div class="grid" style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
-          <div class="field"><label>Age</label><input id="pAge"></div>
-          <div class="field"><label>Weight</label><input id="pWeight" type="number"></div>
+        
+        <div class="grid" style="display:grid; grid-template-columns:2fr 2fr 3fr; gap:0.75rem;">
+          <div class="field">
+             <label>Age (Years)</label>
+             <input id="pAgeY" type="number" min="0" placeholder="0">
+          </div>
+          <div class="field">
+             <label>(Months)</label>
+             <input id="pAgeM" type="number" min="0" max="11" placeholder="0">
+          </div>
+          <div class="field">
+             <label>Weight (Pounds)</label>
+             <div style="display:flex; align-items:center;">
+                <input id="pWeight" type="number" min="0" style="width:100%;">
+                <span style="margin-left:8px; font-size:0.9rem; color:#555;">lbs</span>
+             </div>
+          </div>
         </div>
+
         <div class="actions">
           <button id="btnSavePet" class="btn">Save & Review Appointment</button>
         </div>
@@ -184,8 +205,17 @@
         </div>
         
         <div class="field"><label>Vet Office</label><input id="aVet"></div>
-        <div class="field"><label>Allergies</label><input id="aAllergy"></div>
-        <div class="field"><label>Notes</label><textarea id="aNotes"></textarea></div>
+        
+        <div class="field">
+           <label>Allergies or Sensitivities?</label>
+           <div class="option-buttons-left" style="margin-bottom:0.5rem;">
+              <label><input type="radio" name="hasAllergy" value="Yes"> Yes</label>
+              <label><input type="radio" name="hasAllergy" value="No"> No</label>
+           </div>
+           <input id="aAllergyText" class="hidden" placeholder="Please specify allergies...">
+        </div>
+
+        <div class="field"><label>Notes <span style="color:red">*</span></label><textarea id="aNotes"></textarea></div>
         
         <div class="actions">
           <button id="btnFinalize" class="btn">Finish</button>
@@ -278,7 +308,6 @@
       // Fetch full context (Master + Central)
       google.script.run.withSuccessHandler(res => {
          if(!res || !res.ok) { 
-             // IMPORTANT: This error is caught here. If rpc crashes, res is null.
              alert('Error fetching data. Server may have crashed. Check rpc.gs for syntax errors.'); 
              results.innerHTML = ''; 
              return; 
@@ -395,22 +424,19 @@
 
         const currentJson = JSON.stringify(payload);
         if (currentJson === TX.originalOwnerState) {
-            // No changes, skip save
-            console.log('Skipping owner save (no changes)');
             populatePetForm(container, TX);
             nextStep('step-owner', 'step-pet');
         } else {
-            // Save changes to Central DB
             const btn = container.querySelector('#btnSaveOwner');
             btn.textContent = 'Saving...';
             btn.disabled = true;
             google.script.run.withSuccessHandler(id => {
                btn.textContent = 'Save & Review Pet';
                btn.disabled = false;
-               TX.owner = { ...payload, ownerId: id }; // update local state
+               TX.owner = { ...payload, ownerId: id }; 
                populatePetForm(container, TX);
                nextStep('step-owner', 'step-pet');
-            }).apiUpsertOwner(payload, TX.scheduler); // Writes to Central
+            }).apiUpsertOwner(payload, TX.scheduler); 
         }
     };
 
@@ -421,7 +447,6 @@
         btn.textContent = 'Saving...';
         btn.disabled = true;
         
-        // Save to Central DB
         google.script.run.withSuccessHandler(id => {
            btn.textContent = 'Save & Review Appointment';
            btn.disabled = false;
@@ -433,8 +458,24 @@
 
     // --- DETAILS ---
     container.querySelector('#btnFinalize').onclick = () => {
+        // 🔹 VALIDATION: Require Notes
+        const notes = container.querySelector('#aNotes').value.trim();
+        if(!notes) { alert('Please add a note explaining this update.'); container.querySelector('#aNotes').focus(); return; }
+
         showTransportModal(container, TX);
     };
+
+    // 🔹 TOGGLE: Allergy Text
+    container.querySelectorAll('input[name="hasAllergy"]').forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            const txt = container.querySelector('#aAllergyText');
+            if (e.target.value === 'Yes') {
+                txt.classList.remove('hidden'); txt.focus();
+            } else {
+                txt.classList.add('hidden'); txt.value = '';
+            }
+        });
+    });
   }
 
   // ─── HELPERS: DATA POPULATION ──────────────────────────
@@ -458,13 +499,13 @@
   function getOwnerFormData(container) {
     return {
       'Owner ID': container.querySelector('#ownerId').value,
-      'First Name': container.querySelector('#oFirst').value.trim(),
-      'Last Name': container.querySelector('#oLast').value.trim(),
+      'First Name': toProperCase(container.querySelector('#oFirst').value.trim()),
+      'Last Name': toProperCase(container.querySelector('#oLast').value.trim()),
       'Phone': container.querySelector('#oPhone').value.trim(),
-      'Email': container.querySelector('#oEmail').value.trim(),
-      'Street Address': container.querySelector('#oAddress').value.trim(),
-      'City': container.querySelector('#oCity').value.trim(),
-      'State': container.querySelector('#oState').value.trim(),
+      'Email': toProperCase(container.querySelector('#oEmail').value.trim()),
+      'Street Address': toProperCase(container.querySelector('#oAddress').value.trim()),
+      'City': toProperCase(container.querySelector('#oCity').value.trim()),
+      'State': toProperCase(container.querySelector('#oState').value.trim()),
       'Zip Code': container.querySelector('#oZip').value.trim()
     };
   }
@@ -481,24 +522,45 @@
     set('pPattern', p.pattern);
     set('pSex', p.sex);
     set('pFixed', p.fixed);
-    set('pAge', p.age);
-    set('pWeight', p.weight);
+
+    // 🔹 PARSE AGE: "X years, Y months"
+    const ids = ['pAgeY', 'pAgeM', 'pWeight'];
+    ids.forEach(id => container.querySelector('#'+id).value = '');
+
+    if (p.age) {
+        const matches = p.age.match(/\d+/g);
+        if (matches) {
+            if (matches.length > 0) container.querySelector('#pAgeY').value = matches[0];
+            if (matches.length > 1) container.querySelector('#pAgeM').value = matches[1];
+        } else {
+            container.querySelector('#pAgeY').value = p.age.replace(/\D/g, '');
+        }
+    }
+
+    // 🔹 PARSE WEIGHT: "20 pounds" -> "20"
+    if(p.weight) {
+        container.querySelector('#pWeight').value = String(p.weight).replace(/[^\d.]/g, '');
+    }
   }
 
   function getPetFormData(container) {
+    const y = container.querySelector('#pAgeY').value || '0';
+    const m = container.querySelector('#pAgeM').value || '0';
+    const w = container.querySelector('#pWeight').value;
+
     return {
       'Pet ID': container.querySelector('#petId').value,
       'Owner ID': container.querySelector('#ownerId').value,
-      'Pet Name': container.querySelector('#pName').value,
-      'Species': container.querySelector('#pSpecies').value,
-      'Primary Breed': container.querySelector('#pBreed1').value,
-      'Secondary Breed': container.querySelector('#pBreed2').value,
-      'Color': container.querySelector('#pColor').value,
-      'Color Pattern': container.querySelector('#pPattern').value,
+      'Pet Name': toProperCase(container.querySelector('#pName').value),
+      'Species': toProperCase(container.querySelector('#pSpecies').value),
+      'Primary Breed': toProperCase(container.querySelector('#pBreed1').value),
+      'Secondary Breed': toProperCase(container.querySelector('#pBreed2').value),
+      'Color': toProperCase(container.querySelector('#pColor').value),
+      'Color Pattern': toProperCase(container.querySelector('#pPattern').value),
       'Sex': container.querySelector('#pSex').value,
       'Altered': container.querySelector('#pFixed').value,
-      'Age': container.querySelector('#pAge').value,
-      'Weight': container.querySelector('#pWeight').value
+      'Age': `${y} years, ${m} months`,
+      'Weight': w ? `${w} pounds` : ''
     };
   }
 
@@ -545,8 +607,20 @@
 
     // 3. Text Fields (from Master)
     container.querySelector('#aVet').value = raw['Vet Office Name'] || '';
-    container.querySelector('#aAllergy').value = raw['Allergies or Sensitivities'] || '';
     container.querySelector('#aNotes').value = raw['Notes'] || '';
+    
+    // 🔹 ALLERGIES: Handle Radio + Text
+    const allergyVal = raw['Allergies or Sensitivities'] || 'None Known';
+    const isYes = (allergyVal !== 'None Known' && allergyVal !== 'No' && allergyVal !== '');
+    
+    if (isYes) {
+        container.querySelector('input[name="hasAllergy"][value="Yes"]').checked = true;
+        const txt = container.querySelector('#aAllergyText');
+        txt.classList.remove('hidden');
+        txt.value = allergyVal;
+    } else {
+        container.querySelector('input[name="hasAllergy"][value="No"]').checked = true;
+    }
     
     const recVal = raw['Previous Vet Records'] || 'No';
     const recRadio = container.querySelector(`input[name="hasRec"][value="${recVal}"]`);
@@ -554,23 +628,28 @@
   }
 
   function getApptPayload(container, TX) {
+     // 🔹 ALLERGIES LOGIC
+     const allergyChoice = container.querySelector('input[name="hasAllergy"]:checked')?.value || 'No';
+     const allergyDetail = container.querySelector('#aAllergyText').value.trim();
+     const finalAllergy = (allergyChoice === 'Yes' && allergyDetail) ? allergyDetail : 'None Known';
+
      return {
         // We resend Client/Pet info to keep Master Sheet in sync with Central DB
-        'First Name': TX.owner.firstName,
-        'Last Name': TX.owner.lastName,
+        'First Name': toProperCase(TX.owner.firstName),
+        'Last Name': toProperCase(TX.owner.lastName),
         'Phone Number': TX.owner.phone,
-        'Email': TX.owner.email,
-        'Street Address': TX.owner.address,
-        'City': TX.owner.city,
-        'State': TX.owner.state,
+        'Email': toProperCase(TX.owner.email),
+        'Street Address': toProperCase(TX.owner.address),
+        'City': toProperCase(TX.owner.city),
+        'State': toProperCase(TX.owner.state),
         'Zip Code': TX.owner.zip,
         
-        'Pet Name': TX.pet.name,
-        'Species': TX.pet.species,
-        'Breed One': TX.pet.breed,
-        'Breed Two': TX.pet.breed2,
-        'Color': TX.pet.color,
-        'Color Pattern': TX.pet.pattern,
+        'Pet Name': toProperCase(TX.pet.name),
+        'Species': toProperCase(TX.pet.species),
+        'Breed One': toProperCase(TX.pet.breed),
+        'Breed Two': toProperCase(TX.pet.breed2),
+        'Color': toProperCase(TX.pet.color),
+        'Color Pattern': toProperCase(TX.pet.pattern),
         'Sex': TX.pet.sex,
         'Spayed or Neutered': TX.pet.fixed,
         'Age': TX.pet.age,
@@ -578,8 +657,8 @@
 
         // Appointment Specifics (User Edited)
         'Notes': container.querySelector('#aNotes').value,
-        'Vet Office Name': container.querySelector('#aVet').value,
-        'Allergies or Sensitivities': container.querySelector('#aAllergy').value,
+        'Vet Office Name': toProperCase(container.querySelector('#aVet').value),
+        'Allergies or Sensitivities': finalAllergy,
         'Vaccines Needed': [...container.querySelectorAll('input[name="vaccine"]:checked')].map(el => el.value).join(', '),
         'Additional Services': [...container.querySelectorAll('input[name="service"]:checked')].map(el => el.value).join(', '),
         'Previous Vet Records': container.querySelector('input[name="hasRec"]:checked')?.value || 'No'

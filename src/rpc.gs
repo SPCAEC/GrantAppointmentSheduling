@@ -235,16 +235,21 @@ function apiCreateRogueAppointment(payload) {
 function apiSearchAppointments(query, includePast = false) {
   return apiResponse_(() => {
     const { date, client, pet } = query || {};
-    const tz = Session.getScriptTimeZone() || 'America/New_York';
+    
+    // 1. Setup Timezone & "Today" (Midnight EST)
+    const tz = 'America/New_York';
     const now = new Date();
-    const today = new Date(Utilities.formatDate(now, tz, 'yyyy-MM-dd').replace(/-/g, '/'));
+    const todayStr = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+    const todayMidnight = new Date(todayStr.replace(/-/g, '/')); // 00:00:00 today
 
+    // 2. Get Raw Rows (from sheets.gs)
     const rawRows = searchAppointments_(date, client, pet);
 
+    // 3. Filter & Map
     const rows = rawRows.reduce((acc, r) => {
+      // A. Parse Row Date
       let val = r[CFG.COLS.DATE];
       let rowDate = null;
-      
       if (val instanceof Date) rowDate = val;
       else if (typeof val === 'string') {
         const parts = val.trim().split('/');
@@ -253,24 +258,22 @@ function apiSearchAppointments(query, includePast = false) {
 
       if (!rowDate || isNaN(rowDate.getTime())) return acc;
 
+      // Normalization for comparison
       const rowDateStr = Utilities.formatDate(rowDate, tz, 'yyyy-MM-dd');
       const rowDateMidnight = new Date(rowDateStr.replace(/-/g, '/'));
-      const status = String(r[CFG.COLS.STATUS] || '');
+      
+      // B. STATUS CHECK: Strictly 'Scheduled'
+      // (User requested strictly 'Scheduled', so we exclude 'Reserved', 'Available', etc.)
+      const status = String(r[CFG.COLS.STATUS] || '').trim();
+      if (status !== 'Scheduled') return acc;
 
-      if (includePast) {
-        const isDateOnly = (date && !client && !pet);
-        if (isDateOnly) {
-           if (status !== 'Available' && status !== 'Scheduled' && status !== 'Reserved') return acc;
-        } else {
-           if (status !== 'Scheduled' && status !== 'Reserved') return acc;
-        }
-      } else {
-        if (rowDateMidnight.getTime() < today.getTime()) return acc;
-      }
+      // C. DATE CHECK: "At least one day in the future"
+      // This means rowDate must be strictly GREATER than todayMidnight.
+      // (e.g. If today is 12/16, row must be 12/17 or later)
+      if (rowDateMidnight.getTime() <= todayMidnight.getTime()) return acc;
 
-      const isEditable = rowDateMidnight.getTime() > today.getTime();
+      // D. Build Result Object
       const dateDisplay = Utilities.formatDate(rowDate, tz, 'MM/dd/yyyy');
-
       acc.push({
         id: String(r[CFG.COLS.ID] || ''),
         date: dateDisplay, 
@@ -279,9 +282,9 @@ function apiSearchAppointments(query, includePast = false) {
         firstName: String(r[CFG.COLS.FIRST] || ''),
         lastName: String(r[CFG.COLS.LAST] || ''),
         petName: String(r[CFG.COLS.PET_NAME] || ''),
-        notes: String(r['Notes'] || ''),
+        notes: String(r['Notes'] || ''), // Ensure this matches your Config map if different
         transportNeeded: String(r[CFG.COLS.TRANSPORT_NEEDED] || ''),
-        editable: isEditable
+        editable: true // Since we filtered, all returned rows are implicitly editable
       });
       return acc;
     }, []);
