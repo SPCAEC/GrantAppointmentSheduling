@@ -93,6 +93,7 @@ function apiBookAppointment(payload, type, date, time, appointmentId, schedulerN
     const cleanPayload = normalizePayload_(payload);
 
     // 2. EXPLICIT MAPPING: Connect Frontend keys to Backend Columns
+    // This connects the dots between Frontend forms and Backend columns
     const mapField = (frontendKey, configKey) => {
       if (cleanPayload[frontendKey] !== undefined) {
         cleanPayload[configKey] = cleanPayload[frontendKey];
