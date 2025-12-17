@@ -89,24 +89,23 @@ function apiBookAppointment(payload, type, date, time, appointmentId, schedulerN
     if (!CFG || !CFG.SHEET_ID) throw new Error('Configuration (CFG) not found.');
     if (!payload || typeof payload !== 'object') throw new Error('Invalid payload');
 
-    // 1. Prepare clean payload with defaults
+    // 1. Clean Payload
     const cleanPayload = normalizePayload_(payload);
 
-    // 2. EXPLICIT MAPPING: Map Frontend Keys -> Configured Sheet Headers
-    // This ensures that even if frontend sends "Street Address", we map it to CFG.COLS.ADDRESS
+    // 2. EXPLICIT MAPPING: Connect Frontend keys to Backend Columns
     const mapField = (frontendKey, configKey) => {
       if (cleanPayload[frontendKey] !== undefined) {
         cleanPayload[configKey] = cleanPayload[frontendKey];
       }
     };
 
+    // --- IDs (Critical for tracking) ---
     mapField('Owner ID', CFG.COLS.OWNER_ID);
-    mapField('ownerId',  CFG.COLS.OWNER_ID); // Fallback
-    
+    mapField('ownerId',  CFG.COLS.OWNER_ID);
     mapField('Pet ID', CFG.COLS.PET_ID);
-    mapField('petId',  CFG.COLS.PET_ID);     // Fallback
+    mapField('petId',  CFG.COLS.PET_ID);
 
-    // Client Details
+    // --- Owner Details ---
     mapField('First Name', CFG.COLS.FIRST);
     mapField('Last Name',  CFG.COLS.LAST);
     mapField('Phone',      CFG.COLS.PHONE);
@@ -116,23 +115,23 @@ function apiBookAppointment(payload, type, date, time, appointmentId, schedulerN
     mapField('State',      CFG.COLS.STATE);
     mapField('Zip Code',   CFG.COLS.ZIP);
     
-    // Address Handling (Check both variations)
-    if (cleanPayload['Address']) cleanPayload[CFG.COLS.ADDRESS] = cleanPayload['Address'];
-    else if (cleanPayload['Street Address']) cleanPayload[CFG.COLS.ADDRESS] = cleanPayload['Street Address'];
+    // Address Fallback (Frontend sends 'Street Address', Sheet wants 'Address')
+    if (cleanPayload['Street Address']) cleanPayload[CFG.COLS.ADDRESS] = cleanPayload['Street Address'];
+    else if (cleanPayload['Address']) cleanPayload[CFG.COLS.ADDRESS] = cleanPayload['Address'];
 
-    // Pet Details
+    // --- Pet Details ---
     mapField('Pet Name',   CFG.COLS.PET_NAME);
     mapField('Species',    CFG.COLS.SPECIES);
     mapField('Breed One',  CFG.COLS.BREED_ONE);
     mapField('Breed Two',  CFG.COLS.BREED_TWO);
     mapField('Color',      CFG.COLS.COLOR);
     mapField('Color Pattern', CFG.COLS.COLOR_PATTERN);
-    mapField('Sex',        'Sex'); // Assuming column header is "Sex"
+    mapField('Sex',        'Sex'); 
     mapField('Spayed or Neutered', 'Spayed or Neutered');
     mapField('Age',        'Age');
     mapField('Weight',     'Weight');
-    
-    // Appt Details
+
+    // --- Appointment Details ---
     mapField('Notes', 'Notes');
     mapField('Vet Office Name', CFG.COLS.VET_OFFICE);
     mapField('Allergies or Sensitivities', 'Allergies or Sensitivities');
@@ -152,30 +151,30 @@ function apiBookAppointment(payload, type, date, time, appointmentId, schedulerN
         // NEW SLOT (Rogue or fresh book): Write Grant
         cleanPayload[CFG.COLS.GRANT] = grant;
     } else {
-        // EXISTING SLOT: PROTECT TIME/DATE
-        // We delete these keys so the spreadsheet row retains its original formatted Date/Time objects.
+        // EXISTING SLOT: Protect Time/Date columns
+        // We delete these keys so we don't overwrite the sheet's formatted cells with raw text
         delete cleanPayload[CFG.COLS.DATE];
         delete cleanPayload[CFG.COLS.TIME];
         delete cleanPayload[CFG.COLS.AMPM];
         delete cleanPayload[CFG.COLS.DAY];
         delete cleanPayload[CFG.COLS.GRANT]; 
         
-        // Ensure we don't accidentally write raw keys either
+        // Safety delete of raw keys
         delete cleanPayload['Date'];
         delete cleanPayload['Time'];
         delete cleanPayload['AM or PM'];
     }
 
+    // 5. Find Row and Write
     const data = readAllAppointments_();
-    
-    // 5. Find Row
     let rowIndex = -1;
+    
     if (appointmentId) {
       rowIndex = data.findIndex(r => String(r[CFG.COLS.ID]).trim() === String(appointmentId).trim()) + 2;
     }
 
-    // Fallback Search (if ID mismatch)
     if (rowIndex < 2) {
+      // Fallback search
       rowIndex = data.findIndex(r => {
         const rowDate = r[CFG.COLS.DATE] instanceof Date
           ? Utilities.formatDate(r[CFG.COLS.DATE], Session.getScriptTimeZone(), 'MM/dd/yyyy')
@@ -191,7 +190,7 @@ function apiBookAppointment(payload, type, date, time, appointmentId, schedulerN
 
     if (rowIndex < 2) throw new Error(`Appointment slot not found: ${appointmentId}`);
     
-    // 6. Final Status Updates
+    // Status Updates
     cleanPayload[CFG.COLS.STATUS] = 'Reserved';
     cleanPayload[CFG.COLS.NEEDS_SCHED] = 'Yes';
     if (CFG.COLS.SCHEDULED_BY) cleanPayload[CFG.COLS.SCHEDULED_BY] = schedulerName || '';
@@ -221,72 +220,6 @@ function apiBookAppointment(payload, type, date, time, appointmentId, schedulerN
     }
 
     return {};
-  });
-}
-
-function apiCreateRogueAppointment(payload) {
-  return apiResponse_(() => {
-    if (!payload) throw new Error('Missing payload');
-    
-    // 1. Enforce IDs
-    if (payload['Owner ID'] || payload['ownerId']) payload[CFG.COLS.OWNER_ID] = payload['Owner ID'] || payload['ownerId'];
-    if (payload['Pet ID'] || payload['petId']) payload[CFG.COLS.PET_ID] = payload['Pet ID'] || payload['petId'];
-
-    const newId = getNextAppointmentId_();
-    
-    // 2. Grant Logic
-    const zip = String(payload['Zip Code'] || '').trim();
-    let grant = 'Incubator Extended'; 
-
-    if (zip.includes('14215') || zip.includes('14211')) {
-      grant = 'PFL';
-    } else if (zip.includes('14208')) {
-      grant = 'Incubator';
-    }
-
-    const dateStr = payload['Date']; 
-    let dayOfWeek = '';
-    if (dateStr) {
-      const parts = dateStr.split('/');
-      if (parts.length === 3) {
-        const d = new Date(+parts[2], +parts[0] - 1, +parts[1]); 
-        dayOfWeek = Utilities.formatDate(d, Session.getScriptTimeZone(), 'EEEE');
-      }
-    }
-
-    const fullRecord = normalizePayload_({
-      ...payload,
-      [CFG.COLS.ID]: newId,
-      [CFG.COLS.GRANT]: grant,
-      [CFG.COLS.STATUS]: 'Reserved',
-      [CFG.COLS.NEEDS_SCHED]: 'Yes',
-      [CFG.COLS.DAY]: dayOfWeek,
-      [CFG.COLS.DATE]: payload['Date'],
-      [CFG.COLS.TIME]: payload['Time'],
-      [CFG.COLS.AMPM]: payload['AM or PM'],
-      [CFG.COLS.TYPE]: payload['Appointment Type'],
-      [CFG.COLS.SCHEDULED_BY]: payload['Scheduled By'],
-      [CFG.COLS.UPDATED_BY]: payload['Scheduled By'],
-      [CFG.COLS.CREATED_AT]: new Date()
-    });
-    
-    appendNewAppointment_(fullRecord);
-    
-    const historyPayload = {
-      'Appointment ID': newId,
-      'Appointment Type': payload['Appointment Type'],
-      'Day of Week': dayOfWeek,
-      'Date': payload['Date'],
-      'Time': payload['Time'],
-      'AM or PM': payload['AM or PM'],
-      'Owner ID': payload[CFG.COLS.OWNER_ID] || '',
-      'Pet ID': payload[CFG.COLS.PET_ID] || '',
-      'Notes': payload['Notes'] || '',
-      'Transportation Needed': payload['Transportation Needed'] || '',
-      'Scheduled By': payload['Scheduled By']
-    };
-    if (typeof logAppointmentHistory_ === 'function') logAppointmentHistory_(historyPayload);
-    return { id: newId };
   });
 }
 
