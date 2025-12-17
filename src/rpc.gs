@@ -497,7 +497,7 @@ function apiGetModifyContext(apptId) {
     // 1. Get Appointment Row from Master
     const allAppts = readAllAppointments_();
     
-    // Helper to find value case-insensitively (handles "Owner Id" vs "Owner ID")
+    // Helper to find value case-insensitively
     const getValue = (row, targetHeader) => {
       const key = Object.keys(row).find(k => k.toLowerCase().trim() === targetHeader.toLowerCase().trim());
       return key ? row[key] : '';
@@ -527,11 +527,11 @@ function apiGetModifyContext(apptId) {
         if (owners.length > 0) owner = owners[0];
     }
 
-    // 2b. Fallback: If no ID or not found, build from Appointment Data
+    // 2b. Fallback
     if (!owner) {
         Logger.log('[Modify] Owner not found in Central DB (or no ID). Using Appt data fallback.');
         owner = {
-            ownerId: ownerId || '', // Might be blank
+            ownerId: ownerId || '', 
             firstName: getValue(appt, CFG.COLS.FIRST),
             lastName: getValue(appt, CFG.COLS.LAST),
             phone: getValue(appt, CFG.COLS.PHONE),
@@ -551,7 +551,7 @@ function apiGetModifyContext(apptId) {
         }
     }
 
-    // 3b. Fallback: If no ID or not found, build from Appointment Data
+    // 3b. Fallback
     if (!pet) {
         Logger.log('[Modify] Pet not found in Central DB. Using Appt data fallback.');
         pet = {
@@ -569,7 +569,15 @@ function apiGetModifyContext(apptId) {
         };
     }
 
-    return { appointment: appt, owner: owner, pet: pet };
+    // 🔹 FIX: Sanitize Data (Convert Date objects to Strings)
+    // We use JSON.parse/stringify hack to ensure all Dates become strings before leaving the server.
+    const cleanResult = JSON.parse(JSON.stringify({ 
+      appointment: appt, 
+      owner: owner, 
+      pet: pet 
+    }));
+
+    return cleanResult;
   });
 }
 
