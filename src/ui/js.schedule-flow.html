@@ -804,14 +804,15 @@
        
        const currentOwner = TX.owner;
        
-       // Book Another
+       // "Book Another" Handler
        container.querySelector('#btnBookNext').onclick = () => {
           renderScheduleFlow(container, currentOwner);
        };
 
-       // Return Home (Fixed)
+       // "Return Home" Handler (FIXED)
        container.querySelector('#btnReturnHome').onclick = () => {
-          window.location.reload(); // Standard iframe refresh
+          // Force a full page reload
+          window.location.href = window.location.href;
        };
     }
   };
