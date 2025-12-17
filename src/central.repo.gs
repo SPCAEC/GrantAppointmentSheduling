@@ -247,121 +247,200 @@ function getNextCentralId_(sheet, prefix) {
 }
 
 /**
- * Create or Update Owner
- * Returns the Owner ID
+ * Create or Update Owner Record
  */
 function upsertOwnerInDb_(payload, user) {
   const ss = getCentralSs_();
   const sh = ss.getSheetByName(CFG.TABS.OWNERS);
   const data = sh.getDataRange().getValues();
+  const headers = data[0].map(h => String(h).trim().toLowerCase());
   
-  // Map headers
-  const headers = data[0];
+  // 1. Robust Column Mapping
   const hMap = {};
-  headers.forEach((h, i) => hMap[String(h).trim().toLowerCase()] = i);
-  
-  let rowIdx = -1; // 0-based Array Index
-  let ownerId = payload[CFG.COLS.OWNER_ID];
+  headers.forEach((h, i) => hMap[h] = i);
 
-  // 1. Try to find existing by ID (Robust Search)
+  // Define targets with fallbacks
+  const colId    = hMap['owner id'];
+  const colFirst = hMap['first name'];
+  const colLast  = hMap['last name'];
+  const colEmail = hMap['email'] !== undefined ? hMap['email'] : hMap['email address'];
+  
+  // Phone: check variations
+  const colPhone = hMap['phone number'] !== undefined ? hMap['phone number'] : 
+                   (hMap['phone'] !== undefined ? hMap['phone'] : hMap['cell']);
+                   
+  // Address: check variations
+  const colAddr  = hMap['street address'] !== undefined ? hMap['street address'] : hMap['address'];
+  const colCity  = hMap['city'];
+  const colState = hMap['state'];
+  
+  // Zip: check variations
+  const colZip   = hMap['zip code'] !== undefined ? hMap['zip code'] : 
+                   (hMap['zip'] !== undefined ? hMap['zip'] : hMap['zipcode']);
+
+  const colUpdatedBy = hMap['updated by'];
+  const colUpdatedAt = hMap['updated at'];
+  const colCreatedBy = hMap['created by'];
+  const colCreatedAt = hMap['created at'];
+
+  // 2. Determine ID & Row
+  let ownerId = payload['Owner ID'] || payload['ownerId'];
+  let rowIndex = -1;
+
   if (ownerId) {
-    const idCol = hMap['owner id'];
-    if (idCol !== undefined) {
-      const searchId = String(ownerId).trim().toLowerCase();
-      // Find index in the data array (skip header at 0)
-      rowIdx = data.findIndex((r, i) => i > 0 && String(r[idCol]).trim().toLowerCase() === searchId);
+    // Find existing
+    const searchId = String(ownerId).toLowerCase();
+    rowIndex = data.findIndex((r, i) => i > 0 && String(r[colId]).toLowerCase() === searchId);
+    if (rowIndex !== -1) rowIndex += 1; // Convert to 1-based sheet row
+  }
+
+  if (rowIndex === -1) {
+    // Create New
+    ownerId = getNextCentralId_(sh, 'OWN'); // Helper to generate ID
+    rowIndex = sh.getLastRow() + 1;
+  }
+
+  // 3. Prepare Value Helper
+  // Writes value to the specific column if it exists in the sheet
+  const setValue = (colIdx, val) => {
+    if (colIdx !== undefined && colIdx > -1) {
+      sh.getRange(rowIndex, colIdx + 1).setValue(val);
     }
-  }
+  };
 
-  // 2. Prepare Row Data
-  // If new, generate ID
-  if (rowIdx === -1) {
-    ownerId = getNextCentralId_(sh, 'OWN');
-  }
-
-  const timestamp = new Date();
+  // 4. Write Data
+  setValue(colId, ownerId);
+  setValue(colFirst, payload['First Name'] || payload['firstName']);
+  setValue(colLast,  payload['Last Name']  || payload['lastName']);
+  setValue(colPhone, payload['Phone']      || payload['Phone Number'] || payload['phone']);
+  setValue(colEmail, payload['Email']      || payload['email']);
   
-  // Construct row array matching headers
-  const rowData = headers.map(h => {
-    const key = String(h).trim().toLowerCase();
-    
-    // System Fields
-    if (key === 'owner id') return ownerId;
-    if (key === 'updated at') return timestamp;
-    if (key === 'updated by') return user;
-    if (key === 'created at' && rowIdx === -1) return timestamp;
-    if (key === 'created by' && rowIdx === -1) return user;
-    
-    // Data Fields (Map payload keys to sheet headers)
-    const pKey = Object.keys(payload).find(k => k.toLowerCase() === key);
-    // If updating, preserve existing data if payload is missing that field
-    // If new, leave blank
-    const existingVal = (rowIdx !== -1) ? data[rowIdx][hMap[key]] : '';
-    return pKey ? payload[pKey] : existingVal;
-  });
+  setValue(colAddr,  payload['Address']    || payload['Street Address'] || payload['address']);
+  setValue(colCity,  payload['City']       || payload['city']);
+  setValue(colState, payload['State']      || payload['state']);
+  setValue(colZip,   payload['Zip Code']   || payload['zip']);
 
-  // 3. Write
-  if (rowIdx === -1) {
-    sh.appendRow(rowData);
-  } else {
-    // 🔹 FIX: Convert Array Index to Sheet Row (Index + 1)
-    // data[rowIdx] is the row. In 1-based sheet notation, that is rowIdx + 1.
-    sh.getRange(rowIdx + 1, 1, 1, rowData.length).setValues([rowData]);
-  }
+  // Meta
+  const now = new Date();
+  setValue(colUpdatedBy, user);
+  setValue(colUpdatedAt, now);
   
+  // If new row (checked by reading the Created At column, or just logic)
+  // Simple check: if we appended to getLastRow()+1, it's new. 
+  // Or check if the "Created At" cell is empty.
+  if (colCreatedAt !== undefined) {
+     const cell = sh.getRange(rowIndex, colCreatedAt + 1);
+     if (!cell.getValue()) {
+        cell.setValue(now);
+        setValue(colCreatedBy, user);
+     }
+  }
+
   return ownerId;
 }
 
 /**
- * Create or Update Pet
- * Returns the Pet ID
+ * Create or Update Pet Record
  */
 function upsertPetInDb_(payload, user) {
   const ss = getCentralSs_();
   const sh = ss.getSheetByName(CFG.TABS.PETS);
   const data = sh.getDataRange().getValues();
+  const headers = data[0].map(h => String(h).trim().toLowerCase());
   
-  const headers = data[0];
+  // 1. Robust Column Mapping
   const hMap = {};
-  headers.forEach((h, i) => hMap[String(h).trim().toLowerCase()] = i);
+  headers.forEach((h, i) => hMap[h] = i);
+
+  const colId      = hMap['pet id'];
+  const colOwnerId = hMap['owner id'];
+  const colName    = hMap['pet name'];
+  const colSpecies = hMap['species'];
   
-  let rowIdx = -1;
-  let petId = payload[CFG.COLS.PET_ID];
+  // Breeds
+  const colBreed1  = hMap['primary breed'] !== undefined ? hMap['primary breed'] : hMap['breed one'];
+  const colBreed2  = hMap['secondary breed'] !== undefined ? hMap['secondary breed'] : hMap['breed two'];
+  
+  const colColor   = hMap['color'];
+  
+  // Pattern
+  const colPattern = hMap['color pattern'] !== undefined ? hMap['color pattern'] : hMap['pattern'];
+  
+  const colSex     = hMap['sex'];
+  
+  // Fixed
+  const colFixed   = hMap['spayed or neutered'] !== undefined ? hMap['spayed or neutered'] : 
+                     (hMap['altered'] !== undefined ? hMap['altered'] : hMap['fixed']);
+                     
+  const colAge     = hMap['age'];
+  
+  // Weight
+  const colWeight  = hMap['weight'] !== undefined ? hMap['weight'] : hMap['approx weight'];
+  
+  const colUpdatedBy = hMap['updated by'];
+  const colUpdatedAt = hMap['updated at'];
+  const colCreatedBy = hMap['created by'];
+  const colCreatedAt = hMap['created at'];
+  const colStatus    = hMap['pet status'] !== undefined ? hMap['pet status'] : hMap['status'];
+
+  // 2. Determine ID & Row
+  let petId = payload['Pet ID'] || payload['petId'];
+  let rowIndex = -1;
 
   if (petId) {
-    const idCol = hMap['pet id'];
-    if (idCol !== undefined) {
-      const searchId = String(petId).trim().toLowerCase();
-      rowIdx = data.findIndex((r, i) => i > 0 && String(r[idCol]).trim().toLowerCase() === searchId);
-    }
+    const searchId = String(petId).toLowerCase();
+    rowIndex = data.findIndex((r, i) => i > 0 && String(r[colId]).toLowerCase() === searchId);
+    if (rowIndex !== -1) rowIndex += 1;
   }
 
-  if (rowIdx === -1) {
+  if (rowIndex === -1) {
     petId = getNextCentralId_(sh, 'PET');
+    rowIndex = sh.getLastRow() + 1;
   }
 
-  const timestamp = new Date();
-  
-  const rowData = headers.map(h => {
-    const key = String(h).trim().toLowerCase();
-    if (key === 'pet id') return petId;
-    if (key === 'updated at') return timestamp;
-    if (key === 'updated by') return user;
-    if (key === 'created at' && rowIdx === -1) return timestamp;
-    if (key === 'created by' && rowIdx === -1) return user;
-    if (key === 'pet status' && rowIdx === -1) return 'Active'; 
+  // 3. Write Helper
+  const setValue = (colIdx, val) => {
+    if (colIdx !== undefined && colIdx > -1) {
+      sh.getRange(rowIndex, colIdx + 1).setValue(val);
+    }
+  };
 
-    const pKey = Object.keys(payload).find(k => k.toLowerCase() === key);
-    const existingVal = (rowIdx !== -1) ? data[rowIdx][hMap[key]] : '';
-    return pKey ? payload[pKey] : existingVal;
-  });
+  // 4. Write Data
+  setValue(colId, petId);
+  setValue(colOwnerId, payload['Owner ID'] || payload['ownerId']);
+  setValue(colName,    payload['Pet Name'] || payload['name']);
+  setValue(colSpecies, payload['Species']  || payload['species']);
+  setValue(colBreed1,  payload['Breed One'] || payload['Primary Breed'] || payload['breed']);
+  setValue(colBreed2,  payload['Breed Two'] || payload['Secondary Breed'] || payload['breed2']);
+  setValue(colColor,   payload['Color'] || payload['color']);
+  setValue(colPattern, payload['Color Pattern'] || payload['pattern']);
+  setValue(colSex,     payload['Sex'] || payload['sex']);
+  setValue(colFixed,   payload['Spayed or Neutered'] || payload['Altered'] || payload['fixed']);
+  setValue(colAge,     payload['Age'] || payload['age']);
+  setValue(colWeight,  payload['Weight'] || payload['weight']);
 
-  if (rowIdx === -1) {
-    sh.appendRow(rowData);
-  } else {
-    // 🔹 FIX: Convert Array Index to Sheet Row (Index + 1)
-    sh.getRange(rowIdx + 1, 1, 1, rowData.length).setValues([rowData]);
+  // Ensure status is Active if new
+  if (colStatus !== undefined && rowIndex === sh.getLastRow()) {
+     setValue(colStatus, 'Active');
+  } else if (colStatus !== undefined) {
+     // If existing, ensure we don't accidentally blank it out, but we generally don't change status here
+     // Unless we want to force 'Active' on edit? Let's leave it alone on edit.
+     const currentStatus = sh.getRange(rowIndex, colStatus + 1).getValue();
+     if(!currentStatus) setValue(colStatus, 'Active');
   }
-  
+
+  // Meta
+  const now = new Date();
+  setValue(colUpdatedBy, user);
+  setValue(colUpdatedAt, now);
+
+  if (colCreatedAt !== undefined) {
+     const cell = sh.getRange(rowIndex, colCreatedAt + 1);
+     if (!cell.getValue()) {
+        cell.setValue(now);
+        setValue(colCreatedBy, user);
+     }
+  }
+
   return petId;
 }
