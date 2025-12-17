@@ -91,7 +91,7 @@ function apiBookAppointment(payload, type, date, time, appointmentId, schedulerN
 
     payload = normalizePayload_(payload);
     
-    // 1. Enforce IDs
+    // 1. Enforce IDs (Map standard keys to Sheet Column Names)
     if (payload['Owner ID'] || payload['ownerId']) {
         payload[CFG.COLS.OWNER_ID] = payload['Owner ID'] || payload['ownerId'];
     }
@@ -99,9 +99,9 @@ function apiBookAppointment(payload, type, date, time, appointmentId, schedulerN
         payload[CFG.COLS.PET_ID] = payload['Pet ID'] || payload['petId'];
     }
 
-    // 2. Grant Logic (Zip Codes)
+    // 2. Grant Logic
     const zip = String(payload['Zip Code'] || '').trim();
-    let grant = 'Incubator Extended'; // Default catch-all
+    let grant = 'Incubator Extended'; 
 
     if (zip.includes('14215') || zip.includes('14211')) {
       grant = 'PFL';
@@ -109,7 +109,19 @@ function apiBookAppointment(payload, type, date, time, appointmentId, schedulerN
       grant = 'Incubator';
     }
     
-    payload[CFG.COLS.GRANT] = grant;
+    // 🔹 FIX: Prevent overwriting Time/Date for existing slots
+    if (!appointmentId) {
+        // If creating a NEW slot (e.g. Rogue), we set these
+        payload[CFG.COLS.GRANT] = grant;
+    } else {
+        // If booking an EXISTING slot, we MUST delete these keys from the payload
+        // so we don't overwrite the correctly formatted Date/Time cells in the sheet.
+        delete payload[CFG.COLS.DATE];
+        delete payload[CFG.COLS.TIME];
+        delete payload[CFG.COLS.AMPM];
+        delete payload[CFG.COLS.DAY];
+        delete payload[CFG.COLS.GRANT]; // Usually we don't change grant on booking, but you can remove this line if you DO want to update grant based on new owner zip.
+    }
 
     const data = readAllAppointments_();
     
@@ -302,8 +314,11 @@ function apiCancelAppointment(appointmentId, reason, cancelledBy) {
     
     const rowDate = all[idx][CFG.COLS.DATE];
     const dateStr = (rowDate instanceof Date) ? Utilities.formatDate(rowDate, Session.getScriptTimeZone(), 'MM/dd/yyyy') : String(rowDate);
+    
+    // Optional: Comment out if you want to allow cancelling past appointments for cleanup
     if (!isFutureDate_(dateStr)) throw new Error('Cannot cancel past appointment');
 
+    // 🔹 FIX: Added Owner/Pet IDs to the clear list
     const clearFields = {
       [CFG.COLS.FIRST]: '', [CFG.COLS.LAST]: '', [CFG.COLS.EMAIL]: '', [CFG.COLS.PHONE]: '',
       [CFG.COLS.ADDRESS]: '', [CFG.COLS.CITY]: '', [CFG.COLS.STATE]: '', [CFG.COLS.ZIP]: '',
@@ -311,6 +326,7 @@ function apiCancelAppointment(appointmentId, reason, cancelledBy) {
       [CFG.COLS.BREED_ONE]: '', [CFG.COLS.BREED_TWO]: '', [CFG.COLS.COLOR]: '', [CFG.COLS.COLOR_PATTERN]: '',
       [CFG.COLS.VACCINES]: '', [CFG.COLS.ADDITIONAL_SERVICES]: '', [CFG.COLS.PREV_RECORDS]: '',
       [CFG.COLS.VET_OFFICE]: '', [CFG.COLS.SCHEDULED_BY]: '',
+      [CFG.COLS.OWNER_ID]: '', [CFG.COLS.PET_ID]: '', // <--- ADDED THESE
       'Sex': '', 'Spayed or Neutered': '', 'Age': '', 'Weight': '', 'Allergies or Sensitivities': '', 'Notes': ''
     };
 

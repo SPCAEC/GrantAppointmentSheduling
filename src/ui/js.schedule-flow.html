@@ -797,12 +797,23 @@
              <p>Appointment booked successfully.</p>
              <div class="actions">
                <button class="btn" id="btnBookNext">Book Another for this Client</button>
-               <button class="btn secondary" onclick="window.location.reload()">Return Home</button>
+               <button class="btn secondary" id="btnReturnHome">Return Home</button>
              </div>
           </div>
        `;
+       
+       // Handle "Book Another"
        const currentOwner = TX.owner;
-       container.querySelector('#btnBookNext').onclick = () => renderScheduleFlow(container, currentOwner);
+       container.querySelector('#btnBookNext').onclick = () => {
+          // Re-enter flow with the same owner data pre-loaded
+          renderScheduleFlow(container, currentOwner);
+       };
+
+       // Handle "Return Home" (Full Refresh)
+       container.querySelector('#btnReturnHome').onclick = () => {
+          // Force a full reload of the web app
+          window.top.location.reload();
+       };
     }
   };
 })();
