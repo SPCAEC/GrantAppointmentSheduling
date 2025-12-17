@@ -802,17 +802,16 @@
           </div>
        `;
        
-       // Handle "Book Another"
        const currentOwner = TX.owner;
+       
+       // Book Another
        container.querySelector('#btnBookNext').onclick = () => {
-          // Re-enter flow with the same owner data pre-loaded
           renderScheduleFlow(container, currentOwner);
        };
 
-       // Handle "Return Home" (Full Refresh)
+       // Return Home (Fixed)
        container.querySelector('#btnReturnHome').onclick = () => {
-          // Force a full reload of the web app
-          window.top.location.reload();
+          window.location.reload(); // Standard iframe refresh
        };
     }
   };
