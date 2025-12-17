@@ -633,32 +633,43 @@
      const allergyDetail = container.querySelector('#aAllergyText').value.trim();
      const finalAllergy = (allergyChoice === 'Yes' && allergyDetail) ? allergyDetail : 'None Known';
 
+     // 🔹 HELPER: Handle data format mismatch (Server uses camelCase, Form uses Title Case)
+     const get = (obj, keyCamel, keyTitle) => obj[keyCamel] || obj[keyTitle] || '';
+
      return {
-        // We resend Client/Pet info to keep Master Sheet in sync with Central DB
-        'First Name': toProperCase(TX.owner.firstName),
-        'Last Name': toProperCase(TX.owner.lastName),
-        'Phone Number': TX.owner.phone,
-        'Email': toProperCase(TX.owner.email),
-        'Street Address': toProperCase(TX.owner.address),
-        'City': toProperCase(TX.owner.city),
-        'State': toProperCase(TX.owner.state),
-        'Zip Code': TX.owner.zip,
+        // 🔹 FIX: Explicitly include IDs
+        'Owner ID': get(TX.owner, 'ownerId', 'Owner ID'),
+        'Pet ID':   get(TX.pet, 'petId', 'Pet ID'),
+
+        // Owner Details
+        'First Name':     toProperCase(get(TX.owner, 'firstName', 'First Name')),
+        'Last Name':      toProperCase(get(TX.owner, 'lastName', 'Last Name')),
+        'Phone Number':   get(TX.owner, 'phone', 'Phone'), // Backend maps 'Phone Number'
+        'Email':          toProperCase(get(TX.owner, 'email', 'Email')),
         
-        'Pet Name': toProperCase(TX.pet.name),
-        'Species': toProperCase(TX.pet.species),
-        'Breed One': toProperCase(TX.pet.breed),
-        'Breed Two': toProperCase(TX.pet.breed2),
-        'Color': toProperCase(TX.pet.color),
-        'Color Pattern': toProperCase(TX.pet.pattern),
-        'Sex': TX.pet.sex,
-        'Spayed or Neutered': TX.pet.fixed,
-        'Age': TX.pet.age,
-        'Weight': TX.pet.weight,
+        // Address Fix: Send 'Address' to match sheet header
+        'Address':        toProperCase(get(TX.owner, 'address', 'Street Address')), 
+        'City':           toProperCase(get(TX.owner, 'city', 'City')),
+        'State':          toProperCase(get(TX.owner, 'state', 'State')),
+        'Zip Code':       get(TX.owner, 'zip', 'Zip Code'),
+        
+        // Pet Details
+        'Pet Name':       toProperCase(get(TX.pet, 'name', 'Pet Name')),
+        'Species':        toProperCase(get(TX.pet, 'species', 'Species')),
+        'Breed One':      toProperCase(get(TX.pet, 'breed', 'Breed One') || get(TX.pet, 'breed', 'Primary Breed')),
+        'Breed Two':      toProperCase(get(TX.pet, 'breed2', 'Breed Two') || get(TX.pet, 'breed2', 'Secondary Breed')),
+        'Color':          toProperCase(get(TX.pet, 'color', 'Color')),
+        'Color Pattern':  toProperCase(get(TX.pet, 'pattern', 'Color Pattern')),
+        'Sex':            get(TX.pet, 'sex', 'Sex'),
+        'Spayed or Neutered': get(TX.pet, 'fixed', 'Spayed or Neutered') || get(TX.pet, 'fixed', 'Altered'),
+        'Age':            get(TX.pet, 'age', 'Age'),
+        'Weight':         get(TX.pet, 'weight', 'Weight'),
 
         // Appointment Specifics (User Edited)
         'Notes': container.querySelector('#aNotes').value,
         'Vet Office Name': toProperCase(container.querySelector('#aVet').value),
         'Allergies or Sensitivities': finalAllergy,
+        
         'Vaccines Needed': [...container.querySelectorAll('input[name="vaccine"]:checked')].map(el => el.value).join(', '),
         'Additional Services': [...container.querySelectorAll('input[name="service"]:checked')].map(el => el.value).join(', '),
         'Previous Vet Records': container.querySelector('input[name="hasRec"]:checked')?.value || 'No'
