@@ -98,13 +98,11 @@ function apiBookAppointment(payload, type, date, time, appointmentId, schedulerN
       }
     };
 
-    // IDs
     mapField('Owner ID', CFG.COLS.OWNER_ID);
     mapField('ownerId',  CFG.COLS.OWNER_ID);
     mapField('Pet ID', CFG.COLS.PET_ID);
     mapField('petId',  CFG.COLS.PET_ID);
 
-    // Client
     mapField('First Name', CFG.COLS.FIRST);
     mapField('Last Name',  CFG.COLS.LAST);
     mapField('Phone',      CFG.COLS.PHONE);
@@ -117,7 +115,6 @@ function apiBookAppointment(payload, type, date, time, appointmentId, schedulerN
     if (cleanPayload['Street Address']) cleanPayload[CFG.COLS.ADDRESS] = cleanPayload['Street Address'];
     else if (cleanPayload['Address']) cleanPayload[CFG.COLS.ADDRESS] = cleanPayload['Address'];
 
-    // Pet
     mapField('Pet Name',   CFG.COLS.PET_NAME);
     mapField('Species',    CFG.COLS.SPECIES);
     mapField('Breed One',  CFG.COLS.BREED_ONE);
@@ -129,7 +126,6 @@ function apiBookAppointment(payload, type, date, time, appointmentId, schedulerN
     mapField('Age',        'Age');
     mapField('Weight',     'Weight');
     
-    // Details
     mapField('Notes', 'Notes');
     mapField('Vet Office Name', CFG.COLS.VET_OFFICE);
     mapField('Allergies or Sensitivities', 'Allergies or Sensitivities');
@@ -138,10 +134,9 @@ function apiBookAppointment(payload, type, date, time, appointmentId, schedulerN
     mapField('Previous Vet Records', CFG.COLS.PREV_RECORDS);
     mapField('Transportation Needed', CFG.COLS.TRANSPORT_NEEDED);
 
-    // Reschedule Flag
     mapField('Reschedule', 'Reschedule'); 
 
-    // 3. GRANT LOGIC (ALWAYS RUNS)
+    // 3. GRANT LOGIC (Calculate and Force Write)
     const zip = String(cleanPayload[CFG.COLS.ZIP] || '').trim();
     let grant = 'Incubator Extended'; 
     if (zip.includes('14215') || zip.includes('14211')) {
@@ -149,13 +144,12 @@ function apiBookAppointment(payload, type, date, time, appointmentId, schedulerN
     } else if (zip.includes('14208')) {
       grant = 'Incubator';
     }
-    // Force write the calculated grant
     cleanPayload[CFG.COLS.GRANT] = grant;
 
     // 4. Handle New vs Existing Slot
     if (appointmentId) {
-        // EXISTING SLOT: Protect Time/Date ONLY
-        // We do NOT delete Grant anymore, allowing it to update.
+        // EXISTING SLOT: Protect Time/Date
+        // 🔹 FIX: We do NOT delete the Grant column here anymore.
         delete cleanPayload[CFG.COLS.DATE];
         delete cleanPayload[CFG.COLS.TIME];
         delete cleanPayload[CFG.COLS.AMPM];
@@ -227,7 +221,6 @@ function apiUpdateAppointment(appointmentId, payload, updatedBy, transportNeeded
     payload['Modified Appointment'] = 'Yes';
     const cleanPayload = normalizePayload_(payload);
     
-    // Explicit Mapping
     const mapField = (frontendKey, configKey) => {
       if (cleanPayload[frontendKey] !== undefined) {
         cleanPayload[configKey] = cleanPayload[frontendKey];
@@ -269,7 +262,7 @@ function apiUpdateAppointment(appointmentId, payload, updatedBy, transportNeeded
     mapField('Additional Services', CFG.COLS.ADDITIONAL_SERVICES);
     mapField('Previous Vet Records', CFG.COLS.PREV_RECORDS);
 
-    // 🔹 GRANT LOGIC (New for Update Flow)
+    // 🔹 GRANT LOGIC (Ensure this runs)
     const zip = String(cleanPayload[CFG.COLS.ZIP] || '').trim();
     let grant = 'Incubator Extended'; 
     if (zip.includes('14215') || zip.includes('14211')) {
