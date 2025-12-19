@@ -253,6 +253,10 @@ function getNextCentralId_(sheet, prefix) {
 /**
  * Create or Update Owner Record
  */
+/**
+ * Create or Update Owner Record
+ * Includes automatic Grant calculation based on Zip Code.
+ */
 function upsertOwnerInDb_(payload, user) {
   const ss = getCentralSs_();
   const sh = ss.getSheetByName(CFG.TABS.OWNERS);
@@ -269,18 +273,18 @@ function upsertOwnerInDb_(payload, user) {
   const colLast  = hMap['last name'];
   const colEmail = hMap['email'] !== undefined ? hMap['email'] : hMap['email address'];
   
-  // Phone: check variations
   const colPhone = hMap['phone number'] !== undefined ? hMap['phone number'] : 
                    (hMap['phone'] !== undefined ? hMap['phone'] : hMap['cell']);
                    
-  // Address: check variations
   const colAddr  = hMap['street address'] !== undefined ? hMap['street address'] : hMap['address'];
   const colCity  = hMap['city'];
   const colState = hMap['state'];
   
-  // Zip: check variations
   const colZip   = hMap['zip code'] !== undefined ? hMap['zip code'] : 
                    (hMap['zip'] !== undefined ? hMap['zip'] : hMap['zipcode']);
+
+  // 🔹 NEW: Grant Column Mapping
+  const colGrant = hMap['grant'] !== undefined ? hMap['grant'] : hMap['grant type'];
 
   const colUpdatedBy = hMap['updated by'];
   const colUpdatedAt = hMap['updated at'];
@@ -300,19 +304,27 @@ function upsertOwnerInDb_(payload, user) {
 
   if (rowIndex === -1) {
     // Create New
-    ownerId = getNextCentralId_(sh, 'OWN'); // Helper to generate ID
+    ownerId = getNextCentralId_(sh, 'OWN'); 
     rowIndex = sh.getLastRow() + 1;
   }
 
   // 3. Prepare Value Helper
-  // Writes value to the specific column if it exists in the sheet
   const setValue = (colIdx, val) => {
     if (colIdx !== undefined && colIdx > -1) {
       sh.getRange(rowIndex, colIdx + 1).setValue(val);
     }
   };
 
-  // 4. Write Data
+  // 4. Calculate Grant
+  const zip = String(payload['Zip Code'] || payload['zip'] || '').trim();
+  let grant = 'Incubator Extended'; 
+  if (zip.includes('14215') || zip.includes('14211')) {
+    grant = 'PFL';
+  } else if (zip.includes('14208')) {
+    grant = 'Incubator';
+  }
+
+  // 5. Write Data
   setValue(colId, ownerId);
   setValue(colFirst, payload['First Name'] || payload['firstName']);
   setValue(colLast,  payload['Last Name']  || payload['lastName']);
@@ -322,16 +334,16 @@ function upsertOwnerInDb_(payload, user) {
   setValue(colAddr,  payload['Address']    || payload['Street Address'] || payload['address']);
   setValue(colCity,  payload['City']       || payload['city']);
   setValue(colState, payload['State']      || payload['state']);
-  setValue(colZip,   payload['Zip Code']   || payload['zip']);
+  setValue(colZip,   zip);
+  
+  // 🔹 Write Calculated Grant
+  setValue(colGrant, grant);
 
   // Meta
   const now = new Date();
   setValue(colUpdatedBy, user);
   setValue(colUpdatedAt, now);
   
-  // If new row (checked by reading the Created At column, or just logic)
-  // Simple check: if we appended to getLastRow()+1, it's new. 
-  // Or check if the "Created At" cell is empty.
   if (colCreatedAt !== undefined) {
      const cell = sh.getRange(rowIndex, colCreatedAt + 1);
      if (!cell.getValue()) {
