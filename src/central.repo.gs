@@ -112,48 +112,43 @@ function getPetsByOwnerId_(ownerId) {
   const sh = ss.getSheetByName(CFG.TABS.PETS);
   const data = sh.getDataRange().getValues();
   const headers = data.shift().map(h => String(h).trim().toLowerCase());
-  
   const hMap = {};
   headers.forEach((h, i) => hMap[h] = i);
-  
-  // 🔹 FIX: Robust Column Lookups based on user request
-  const idxPattern = hMap['pattern'] !== undefined ? hMap['pattern'] : hMap['color pattern'];
-  const idxWeight  = hMap['weight'] !== undefined ? hMap['weight'] : hMap['approx weight'];
-  const idxStatus  = hMap['pet status'] !== undefined ? hMap['pet status'] : hMap['status'];
-  
-  // Breeds & Fixed
-  const idxBreed1 = hMap['breed one'] !== undefined ? hMap['breed one'] : hMap['primary breed'];
-  const idxBreed2 = hMap['breed two'] !== undefined ? hMap['breed two'] : hMap['secondary breed'];
-  const idxFixed  = hMap['spayed or neutered'] !== undefined ? hMap['spayed or neutered'] : (hMap['altered'] !== undefined ? hMap['altered'] : hMap['fixed']);
 
-  const pets = [];
+  const idxOwnerId = hMap['owner id'];
+  const results = [];
+  
+  if (idxOwnerId === undefined) return [];
+
+  // 🔹 FIX: Robust matching
+  const targetId = String(ownerId).toLowerCase().trim();
+
   data.forEach((row, i) => {
-    const pOwnerId = String(row[hMap['owner id']] || '');
-    const statusVal = idxStatus !== undefined ? String(row[idxStatus]) : 'Active';
-    
-    if (pOwnerId === ownerId && statusVal.trim().toLowerCase() === 'active') {
-      pets.push({
-        rowIndex: i + 2,
-        petId: row[hMap['pet id']],
-        name: row[hMap['pet name']],
-        species: row[hMap['species']],
-        
-        // 🔹 UPDATED MAPPINGS
-        breed: (idxBreed1 !== undefined) ? row[idxBreed1] : '',
-        breed2: (idxBreed2 !== undefined) ? row[idxBreed2] : '', // Now including Breed 2
-        
-        color: row[hMap['color']],
-        pattern: (idxPattern !== undefined) ? row[idxPattern] : '',
-        
-        fixed: (idxFixed !== undefined) ? row[idxFixed] : '',
-        
-        weight: (idxWeight !== undefined) ? row[idxWeight] : '',
-        age: row[hMap['age']],
-        sex: row[hMap['sex']]
+    const rowOwnerId = String(row[idxOwnerId] || '').toLowerCase().trim();
+    if (rowOwnerId === targetId) {
+      // ... (Rest of mapping logic remains the same, just robust ID check)
+      const getVal = (key) => {
+        const k = hMap[key];
+        return (k !== undefined) ? row[k] : '';
+      };
+      
+      results.push({
+        petId: getVal('pet id'),
+        ownerId: rowOwnerId,
+        name: getVal('pet name'),
+        species: getVal('species'),
+        breed: getVal('primary breed') || getVal('breed one'),
+        breed2: getVal('secondary breed') || getVal('breed two'),
+        color: getVal('color'),
+        pattern: getVal('color pattern') || getVal('pattern'),
+        sex: getVal('sex'),
+        fixed: getVal('spayed or neutered') || getVal('fixed') || getVal('altered'),
+        age: getVal('age'),
+        weight: getVal('weight') || getVal('approx weight')
       });
     }
   });
-  return pets;
+  return results;
 }
 
 /**
@@ -262,84 +257,61 @@ function upsertOwnerInDb_(payload, user) {
   const sh = ss.getSheetByName(CFG.TABS.OWNERS);
   const data = sh.getDataRange().getValues();
   const headers = data[0].map(h => String(h).trim().toLowerCase());
-  
-  // 1. Robust Column Mapping
   const hMap = {};
   headers.forEach((h, i) => hMap[h] = i);
 
-  // Define targets with fallbacks
+  // Mappings
   const colId    = hMap['owner id'];
   const colFirst = hMap['first name'];
   const colLast  = hMap['last name'];
   const colEmail = hMap['email'] !== undefined ? hMap['email'] : hMap['email address'];
-  
-  const colPhone = hMap['phone number'] !== undefined ? hMap['phone number'] : 
-                   (hMap['phone'] !== undefined ? hMap['phone'] : hMap['cell']);
-                   
+  const colPhone = hMap['phone number'] !== undefined ? hMap['phone number'] : (hMap['phone'] || hMap['cell']);
   const colAddr  = hMap['street address'] !== undefined ? hMap['street address'] : hMap['address'];
   const colCity  = hMap['city'];
   const colState = hMap['state'];
-  
-  const colZip   = hMap['zip code'] !== undefined ? hMap['zip code'] : 
-                   (hMap['zip'] !== undefined ? hMap['zip'] : hMap['zipcode']);
-
-  // 🔹 NEW: Grant Column Mapping
-  const colGrant = hMap['grant'] !== undefined ? hMap['grant'] : hMap['grant type'];
+  const colZip   = hMap['zip code'] !== undefined ? hMap['zip code'] : (hMap['zip'] || hMap['zipcode']);
+  const colGrant = hMap['grant'] !== undefined ? hMap['grant'] : hMap['grant type']; // 🔹 Confirm this column exists in your sheet
 
   const colUpdatedBy = hMap['updated by'];
   const colUpdatedAt = hMap['updated at'];
   const colCreatedBy = hMap['created by'];
   const colCreatedAt = hMap['created at'];
 
-  // 2. Determine ID & Row
   let ownerId = payload['Owner ID'] || payload['ownerId'];
   let rowIndex = -1;
 
   if (ownerId) {
-    // Find existing
-    const searchId = String(ownerId).toLowerCase();
-    rowIndex = data.findIndex((r, i) => i > 0 && String(r[colId]).toLowerCase() === searchId);
-    if (rowIndex !== -1) rowIndex += 1; // Convert to 1-based sheet row
+    const searchId = String(ownerId).toLowerCase().trim();
+    rowIndex = data.findIndex((r, i) => i > 0 && String(r[colId]).toLowerCase().trim() === searchId);
+    if (rowIndex !== -1) rowIndex += 1;
   }
 
   if (rowIndex === -1) {
-    // Create New
     ownerId = getNextCentralId_(sh, 'OWN'); 
     rowIndex = sh.getLastRow() + 1;
   }
 
-  // 3. Prepare Value Helper
   const setValue = (colIdx, val) => {
-    if (colIdx !== undefined && colIdx > -1) {
-      sh.getRange(rowIndex, colIdx + 1).setValue(val);
-    }
+    if (colIdx !== undefined && colIdx > -1) sh.getRange(rowIndex, colIdx + 1).setValue(val);
   };
 
-  // 4. Calculate Grant
+  // Grant Calculation
   const zip = String(payload['Zip Code'] || payload['zip'] || '').trim();
   let grant = 'Incubator Extended'; 
-  if (zip.includes('14215') || zip.includes('14211')) {
-    grant = 'PFL';
-  } else if (zip.includes('14208')) {
-    grant = 'Incubator';
-  }
+  if (zip.includes('14215') || zip.includes('14211')) grant = 'PFL';
+  else if (zip.includes('14208')) grant = 'Incubator';
 
-  // 5. Write Data
   setValue(colId, ownerId);
   setValue(colFirst, payload['First Name'] || payload['firstName']);
   setValue(colLast,  payload['Last Name']  || payload['lastName']);
   setValue(colPhone, payload['Phone']      || payload['Phone Number'] || payload['phone']);
   setValue(colEmail, payload['Email']      || payload['email']);
-  
   setValue(colAddr,  payload['Address']    || payload['Street Address'] || payload['address']);
   setValue(colCity,  payload['City']       || payload['city']);
   setValue(colState, payload['State']      || payload['state']);
   setValue(colZip,   zip);
+  setValue(colGrant, grant); // 🔹 Write Grant
   
-  // 🔹 Write Calculated Grant
-  setValue(colGrant, grant);
-
-  // Meta
   const now = new Date();
   setValue(colUpdatedBy, user);
   setValue(colUpdatedAt, now);

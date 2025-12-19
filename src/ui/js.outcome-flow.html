@@ -9,24 +9,24 @@
   };
 
   // ─── SEARCH SCREEN ─────────────────────────────────────
+  // ─── SEARCH SCREEN ─────────────────────────────────────
   function renderSearch(container) {
-    // 🔹 NAV FIX: Ensure Back button goes to Main Menu from here
     if (window.SPCA && window.SPCA.setBackHandler) {
         window.SPCA.setBackHandler(null);
     }
 
     container.innerHTML = `
       <div class="schedule-step">
-        <h2>Find Appointment</h2>
+        <h2>Find Appointment / Slot</h2>
         <div class="grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem;">
             
             <div class="field">
               <label>Date</label>
               <div style="display:flex; align-items:center; gap:8px;">
                 <input id="oDate" type="text" placeholder="MM/DD/YYYY" maxlength="10">
-                <div style="position:relative; width:32px; height:32px; flex-shrink:0;">
+                <div style="position:relative; width:36px; height:36px; flex-shrink:0;">
                    <input id="oDatePicker" type="date" 
-                          style="position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; z-index:2;">
+                          style="position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; z-index:100;">
                    <button class="btn secondary" style="width:100%; height:100%; padding:0; display:flex; align-items:center; justify-content:center;">
                      📅
                    </button>
@@ -50,24 +50,18 @@
     const datePicker = container.querySelector('#oDatePicker');
     const searchBtn = container.querySelector('#oSearchBtn');
 
-    // ─── Trigger Search on Enter ───
+    // Trigger Search on Enter
     container.querySelectorAll('input[type="text"]').forEach(input => {
-      input.addEventListener('keyup', (e) => {
-        if (e.key === 'Enter') searchBtn.click();
-      });
+      input.addEventListener('keyup', (e) => { if (e.key === 'Enter') searchBtn.click(); });
     });
 
-    // ─── 1. Date Logic (Auto-Format & Picker) ───
-    
-    // A. Sync Picker -> Text
+    // Date Logic
     datePicker.addEventListener('change', () => {
       if (datePicker.value) {
         const [y, m, d] = datePicker.value.split('-');
         dateInput.value = `${m}/${d}/${y}`;
       }
     });
-
-    // B. Typing Logic
     dateInput.addEventListener('input', (e) => {
       let v = e.target.value.replace(/\D/g, ''); 
       if (v.length >= 5) v = `${v.slice(0,2)}/${v.slice(2,4)}/${v.slice(4,8)}`;
@@ -75,30 +69,16 @@
       e.target.value = v;
     });
 
-    // C. Pad Logic on Blur
-    const normalizeDate = () => {
-      const raw = dateInput.value.trim();
-      if (!raw) return;
-      const parts = raw.split('/');
-      if (parts.length === 3) {
-        let m = parts[0];
-        let d = parts[1];
-        let y = parts[2];
-        if (m.length === 1) m = '0' + m;
-        if (d.length === 1) d = '0' + d;
-        if (y.length === 2) y = '20' + y;
-        dateInput.value = `${m}/${d}/${y}`;
-      }
-    };
-    dateInput.addEventListener('change', normalizeDate);
-    dateInput.addEventListener('blur', normalizeDate);
-
-
-    // ─── 2. Search Action ───
+    // Search Action
     searchBtn.addEventListener('click', () => {
-      normalizeDate(); 
-      
       results.innerHTML = `<div class="spinner"></div>`;
+      
+      const query = {
+          date: dateInput.value.trim(),
+          client: container.querySelector('#oClient').value.trim(),
+          pet: container.querySelector('#oPet').value.trim()
+      };
+
       google.script.run
         .withSuccessHandler(res => {
           if (!res || !res.ok) { 
@@ -110,14 +90,10 @@
         .withFailureHandler(err => {
           results.innerHTML = `<p class="error">Server error.</p>`;
         })
-        .apiSearchAppointments({
-          date: dateInput.value.trim(),
-          client: container.querySelector('#oClient').value.trim(),
-          pet: container.querySelector('#oPet').value.trim()
-        }, true); 
+        // 🔹 FIX: Pass Status Filter to include "Available" and "Reserved"
+        .apiSearchAppointments(query, true, ['Scheduled', 'Reserved', 'Available']); 
     });
     
-    // Clear Action
     container.querySelector('#oClearBtn').addEventListener('click', () => {
         dateInput.value = '';
         datePicker.value = '';
@@ -127,6 +103,7 @@
     });
   }
 
+  // ─── RESULTS RENDERER ──────────────────────────────────
   // ─── RESULTS RENDERER ──────────────────────────────────
   function renderResults(container, target, rows) {
     target.innerHTML = '';
@@ -147,14 +124,17 @@
         ? 'color:var(--success); background:#dcfce7; padding:2px 6px; border-radius:4px;' 
         : 'color:var(--fg);';
 
+      // 🔹 FIX: Show Type if available
+      const typeLabel = r.type ? `<div style="font-size:0.85rem; font-weight:700; color:var(--primary); text-transform:uppercase; margin-bottom:4px;">${r.type}</div>` : '';
+
       card.innerHTML = `
+        ${typeLabel}
         <div style="font-weight:600; margin-bottom:0.25rem;">
            ${isAvailable ? 'Empty Slot' : r.firstName + ' ' + r.lastName} 
            ${isAvailable ? '' : '— ' + r.petName}
         </div>
         <div>${r.date} ${r.time}</div>
-        <div>Status: <strong style="${statusStyle}">${r.status}</strong></div>
-        <div style="font-size:0.8rem; opacity:0.6; margin-top:0.25rem;">${r.id}</div>
+        <div style="font-size:0.9rem; margin-top:4px;">Status: <strong style="${statusStyle}">${r.status}</strong></div>
       `;
       card.style.cursor = 'pointer';
       card.addEventListener('click', () => renderOutcomeForm(container, r));

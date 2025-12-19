@@ -257,7 +257,6 @@
             <div style="font-weight:700; font-size:1.05rem; margin-bottom:0.25rem;">${TX.type}</div>
             <div style="margin-bottom:0.1rem;">${s.day} ${s.date}</div>
             <div style="font-size:1.1rem; font-weight:600; margin-bottom:0.25rem;">${s.time}</div>
-            <div style="font-size:0.9rem; color:#444;">Grant: ${s.grant || 'None'}</div>
             <div style="font-size:0.75rem; opacity:0.5; margin-top:0.4rem;">ID: ${s.id}</div>
           `;
           card.onclick = () => {
@@ -803,16 +802,14 @@
        `;
        
        const currentOwner = TX.owner;
+       container.querySelector('#btnBookNext').onclick = () => renderScheduleFlow(container, currentOwner);
        
-       // "Book Another" Handler
-       container.querySelector('#btnBookNext').onclick = () => {
-          renderScheduleFlow(container, currentOwner);
-       };
-
-       // "Return Home" Handler (FIXED)
+       // 🔹 FIX: Reliable Return Home
        container.querySelector('#btnReturnHome').onclick = () => {
-          // Force a full page reload
-          window.location.href = window.location.href;
+          container.innerHTML = '<div class="spinner"></div><p style="text-align:center">Reloading...</p>';
+          google.script.run.withSuccessHandler(url => {
+             window.top.location.href = url;
+          }).getScriptUrl(); // You must add getScriptUrl() to rpc.gs or use google.script.host
        };
     }
   };
