@@ -224,6 +224,89 @@ function apiBookAppointment(payload, type, date, time, appointmentId, schedulerN
   });
 }
 
+function apiUpdateAppointment(appointmentId, payload, updatedBy, transportNeeded) {
+  return apiResponse_(() => {
+    if (!appointmentId) throw new Error('Missing ID');
+    
+    // 🔹 NEW: Flag as Modified
+    payload['Modified Appointment'] = 'Yes';
+
+    // 1. Clean Payload
+    const cleanPayload = normalizePayload_(payload);
+    
+    // 2. EXPLICIT MAPPING: Connect Frontend keys to Backend Columns
+    // (Crucial for ensuring details like Address/Breed are actually saved)
+    const mapField = (frontendKey, configKey) => {
+      if (cleanPayload[frontendKey] !== undefined) {
+        cleanPayload[configKey] = cleanPayload[frontendKey];
+      }
+    };
+
+    // IDs
+    mapField('Owner ID', CFG.COLS.OWNER_ID);
+    mapField('ownerId',  CFG.COLS.OWNER_ID);
+    mapField('Pet ID', CFG.COLS.PET_ID);
+    mapField('petId',  CFG.COLS.PET_ID);
+
+    // Client
+    mapField('First Name', CFG.COLS.FIRST);
+    mapField('Last Name',  CFG.COLS.LAST);
+    mapField('Phone',      CFG.COLS.PHONE);
+    mapField('Phone Number', CFG.COLS.PHONE);
+    mapField('Email',      CFG.COLS.EMAIL);
+    mapField('City',       CFG.COLS.CITY);
+    mapField('State',      CFG.COLS.STATE);
+    mapField('Zip Code',   CFG.COLS.ZIP);
+    
+    // Address Fallback
+    if (cleanPayload['Street Address']) cleanPayload[CFG.COLS.ADDRESS] = cleanPayload['Street Address'];
+    else if (cleanPayload['Address']) cleanPayload[CFG.COLS.ADDRESS] = cleanPayload['Address'];
+
+    // Pet
+    mapField('Pet Name',   CFG.COLS.PET_NAME);
+    mapField('Species',    CFG.COLS.SPECIES);
+    mapField('Breed One',  CFG.COLS.BREED_ONE);
+    mapField('Breed Two',  CFG.COLS.BREED_TWO);
+    mapField('Color',      CFG.COLS.COLOR);
+    mapField('Color Pattern', CFG.COLS.COLOR_PATTERN);
+    mapField('Sex',        'Sex'); 
+    mapField('Spayed or Neutered', 'Spayed or Neutered');
+    mapField('Age',        'Age');
+    mapField('Weight',     'Weight');
+    
+    // Appt Details
+    mapField('Notes', 'Notes');
+    mapField('Vet Office Name', CFG.COLS.VET_OFFICE);
+    mapField('Allergies or Sensitivities', 'Allergies or Sensitivities');
+    mapField('Vaccines Needed', CFG.COLS.VACCINES);
+    mapField('Additional Services', CFG.COLS.ADDITIONAL_SERVICES);
+    mapField('Previous Vet Records', CFG.COLS.PREV_RECORDS);
+
+    // 3. Find Row
+    const all = readAllAppointments_();
+    const idx = all.findIndex(r => String(r[CFG.COLS.ID] || '').trim() === String(appointmentId).trim());
+    if (idx < 0) throw new Error('Not found');
+
+    // 4. Set Metadata
+    cleanPayload[CFG.COLS.NEEDS_SCHED] = 'Yes';
+    if (CFG.COLS.UPDATED_BY) cleanPayload[CFG.COLS.UPDATED_BY] = String(updatedBy || '');
+    if (CFG.COLS.TRANSPORT_NEEDED) cleanPayload[CFG.COLS.TRANSPORT_NEEDED] = (transportNeeded === 'Yes' ? 'Yes' : 'No');
+
+    // 5. Update
+    updateAppointmentRow_(idx + 2, cleanPayload);
+    
+    // 6. Email Alert (Optional)
+    const status = String(cleanPayload[CFG.COLS.STATUS] || '');
+    if (status.toLowerCase() === 'scheduled') {
+      try {
+        if(typeof sendAppointmentChangeEmail_ === 'function') sendAppointmentChangeEmail_(cleanPayload);
+      } catch (e) { console.warn(e); }
+    }
+    
+    return {};
+  });
+}
+
 function apiSearchAppointments(query, includePast = false) {
   return apiResponse_(() => {
     const { date, client, pet } = query || {};
