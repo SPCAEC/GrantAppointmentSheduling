@@ -221,6 +221,7 @@ function apiUpdateAppointment(appointmentId, payload, updatedBy, transportNeeded
     payload['Modified Appointment'] = 'Yes';
     const cleanPayload = normalizePayload_(payload);
     
+    // Explicit Mapping
     const mapField = (frontendKey, configKey) => {
       if (cleanPayload[frontendKey] !== undefined) {
         cleanPayload[configKey] = cleanPayload[frontendKey];
@@ -262,7 +263,8 @@ function apiUpdateAppointment(appointmentId, payload, updatedBy, transportNeeded
     mapField('Additional Services', CFG.COLS.ADDITIONAL_SERVICES);
     mapField('Previous Vet Records', CFG.COLS.PREV_RECORDS);
 
-    // 🔹 GRANT LOGIC (Ensure this runs)
+    // 🔹 FORCE GRANT UPDATE (The Fix)
+    // We calculate the grant and explicitly set it using the Sheet Header Name
     const zip = String(cleanPayload[CFG.COLS.ZIP] || '').trim();
     let grant = 'Incubator Extended'; 
     if (zip.includes('14215') || zip.includes('14211')) {
@@ -270,7 +272,9 @@ function apiUpdateAppointment(appointmentId, payload, updatedBy, transportNeeded
     } else if (zip.includes('14208')) {
       grant = 'Incubator';
     }
-    cleanPayload[CFG.COLS.GRANT] = grant;
+    
+    // Use the CONFIG key (e.g. "Grant") to ensure the helper writes it
+    cleanPayload[CFG.COLS.GRANT] = grant; 
 
     // Find Row
     const all = readAllAppointments_();
