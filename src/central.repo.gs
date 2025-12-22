@@ -432,3 +432,26 @@ function upsertPetInDb_(payload, user) {
 
   return petId;
 }
+
+/**
+ * Update just the Transportation field for an Owner
+ */
+function updateOwnerTransport_(ownerId, transportValue) {
+  const ss = getCentralSs_();
+  const sh = ss.getSheetByName(CFG.TABS.OWNERS);
+  const data = sh.getDataRange().getValues();
+  const headers = data[0].map(h => String(h).trim().toLowerCase());
+  
+  const idxId = headers.indexOf('owner id');
+  const idxTrans = headers.findIndex(h => h.includes('transportation') || h.includes('transport'));
+
+  if (idxId === -1 || idxTrans === -1) return;
+
+  const targetId = String(ownerId).toLowerCase().trim();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][idxId]).toLowerCase().trim() === targetId) {
+       sh.getRange(i + 1, idxTrans + 1).setValue(transportValue);
+       return;
+    }
+  }
+}

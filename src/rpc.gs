@@ -204,6 +204,96 @@ function apiBookAppointment(payload, type, date, time, appointmentId, schedulerN
   });
 }
 
+function apiCreateRogueAppointment(payload) {
+  return apiResponse_(() => {
+    if (!CFG || !CFG.SHEET_ID) throw new Error('Configuration (CFG) not found.');
+    if (!payload || typeof payload !== 'object') throw new Error('Invalid payload');
+
+    const cleanPayload = normalizePayload_(payload);
+
+    // 1. Explicit Mapping (Same as apiBookAppointment)
+    const mapField = (frontendKey, configKey) => {
+      if (cleanPayload[frontendKey] !== undefined) {
+        cleanPayload[configKey] = cleanPayload[frontendKey];
+      }
+    };
+
+    // Map IDs & Client Info
+    mapField('Owner ID', CFG.COLS.OWNER_ID); mapField('ownerId',  CFG.COLS.OWNER_ID);
+    mapField('Pet ID', CFG.COLS.PET_ID);     mapField('petId',  CFG.COLS.PET_ID);
+    mapField('First Name', CFG.COLS.FIRST);  mapField('Last Name',  CFG.COLS.LAST);
+    mapField('Phone', CFG.COLS.PHONE);       mapField('Phone Number', CFG.COLS.PHONE);
+    mapField('Email', CFG.COLS.EMAIL);       mapField('City', CFG.COLS.CITY);
+    mapField('State', CFG.COLS.STATE);       mapField('Zip Code', CFG.COLS.ZIP);
+    
+    if (cleanPayload['Street Address']) cleanPayload[CFG.COLS.ADDRESS] = cleanPayload['Street Address'];
+    else if (cleanPayload['Address']) cleanPayload[CFG.COLS.ADDRESS] = cleanPayload['Address'];
+
+    // Map Pet Info
+    mapField('Pet Name', CFG.COLS.PET_NAME); mapField('Species', CFG.COLS.SPECIES);
+    mapField('Breed One', CFG.COLS.BREED_ONE); mapField('Breed Two', CFG.COLS.BREED_TWO);
+    mapField('Color', CFG.COLS.COLOR); mapField('Color Pattern', CFG.COLS.COLOR_PATTERN);
+    mapField('Sex', 'Sex'); mapField('Spayed or Neutered', 'Spayed or Neutered');
+    mapField('Age', 'Age'); mapField('Weight', 'Weight');
+
+    // Map Details
+    mapField('Notes', 'Notes');
+    mapField('Vet Office Name', CFG.COLS.VET_OFFICE);
+    mapField('Allergies or Sensitivities', 'Allergies or Sensitivities');
+    mapField('Vaccines Needed', CFG.COLS.VACCINES);
+    mapField('Additional Services', CFG.COLS.ADDITIONAL_SERVICES);
+    mapField('Previous Vet Records', CFG.COLS.PREV_RECORDS);
+    mapField('Transportation Needed', CFG.COLS.TRANSPORT_NEEDED);
+    mapField('Reschedule', 'Reschedule');
+
+    // 2. Grant Logic
+    const zip = String(cleanPayload[CFG.COLS.ZIP] || '').trim();
+    let grant = 'Incubator Extended'; 
+    if (zip.includes('14215') || zip.includes('14211')) grant = 'PFL';
+    else if (zip.includes('14208')) grant = 'Incubator';
+    cleanPayload[CFG.COLS.GRANT] = grant;
+
+    // 3. Prepare Rogue Fields
+    const newId = getNextAppointmentId_();
+    
+    // Parse Date for Day of Week
+    let dayOfWeek = '';
+    const dStr = cleanPayload[CFG.COLS.DATE] || payload['Date'];
+    if (dStr) {
+      const parts = dStr.split('/');
+      if (parts.length === 3) {
+        const d = new Date(+parts[2], +parts[0] - 1, +parts[1]); 
+        dayOfWeek = Utilities.formatDate(d, Session.getScriptTimeZone(), 'EEEE');
+      }
+    }
+
+    cleanPayload[CFG.COLS.ID] = newId;
+    cleanPayload[CFG.COLS.STATUS] = 'Scheduled';
+    cleanPayload[CFG.COLS.NEEDS_SCHED] = 'No';
+    cleanPayload[CFG.COLS.DAY] = dayOfWeek;
+    // Ensure Date/Time are mapped from payload if not already
+    if (!cleanPayload[CFG.COLS.DATE]) cleanPayload[CFG.COLS.DATE] = payload['Date'];
+    if (!cleanPayload[CFG.COLS.TIME]) cleanPayload[CFG.COLS.TIME] = payload['Time'];
+    if (!cleanPayload[CFG.COLS.AMPM]) cleanPayload[CFG.COLS.AMPM] = payload['AM or PM'];
+    if (!cleanPayload[CFG.COLS.TYPE]) cleanPayload[CFG.COLS.TYPE] = payload['Appointment Type'];
+    
+    if (CFG.COLS.SCHEDULED_BY) cleanPayload[CFG.COLS.SCHEDULED_BY] = payload['Scheduled By'] || '';
+    cleanPayload[CFG.COLS.CREATED_AT] = new Date();
+
+    // 4. Write
+    appendNewAppointment_(cleanPayload);
+    
+    // 5. Update Owner Transportation in Central DB
+    if (cleanPayload[CFG.COLS.OWNER_ID] && cleanPayload[CFG.COLS.TRANSPORT_NEEDED]) {
+       try {
+         updateOwnerTransport_(cleanPayload[CFG.COLS.OWNER_ID], cleanPayload[CFG.COLS.TRANSPORT_NEEDED]);
+       } catch(e) { console.warn('Failed to sync transport to owner DB', e); }
+    }
+
+    return { id: newId };
+  });
+}
+
 function apiUpdateAppointment(appointmentId, payload, updatedBy, transportNeeded) {
   return apiResponse_(() => {
     if (!appointmentId) throw new Error('Missing ID');

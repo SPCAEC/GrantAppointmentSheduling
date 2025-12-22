@@ -362,7 +362,7 @@
             <div style="font-weight:700;">${TX.newType}</div>
             <div>${s.day} ${s.date}</div>
             <div>${s.time}</div>
-            <div style="font-size:0.8rem;">Grant: ${s.grant}</div>
+            <div style="font-size:0.8rem; opacity:0.6;">ID: ${s.id}</div>
           `;
           card.onclick = () => {
              TX.newSlot = s;
@@ -565,21 +565,46 @@
   }
 
   function populateApptDetails(container, TX) {
-    // 1. Summary Header
-    let type = (TX.mode === 'RESCHEDULE') ? TX.newType : TX.originalAppt['Appointment Type'];
+    // Helper to safely get data regardless of casing
+    const get = (obj, k1, k2) => obj[k1] || obj[k2] || '';
+
+    // 🔹 FIX 2.3.1: Show Current Type logic
+    let type = '';
+    if (TX.mode === 'RESCHEDULE') {
+        type = `Rescheduling to: ${TX.newType} <br><span style="font-size:0.8rem; font-weight:normal;">(Was: ${TX.originalAppt['Appointment Type']})</span>`;
+    } else {
+        type = TX.originalAppt['Appointment Type'];
+    }
+
     let timeInfo = '';
+    // 🔹 FIX 2.1.a: Date Formatting
+    const formatDate = (d) => {
+        if (!d) return '';
+        // If ISO string "2025-12-23T..."
+        if (typeof d === 'string' && d.includes('T')) {
+            const dateObj = new Date(d);
+            return (dateObj.getMonth()+1) + '/' + dateObj.getDate() + '/' + dateObj.getFullYear();
+        }
+        return d;
+    };
+
     if (TX.mode === 'RESCHEDULE') {
        timeInfo = TX.isRogue 
-         ? `${TX.rogueData.date} @ ${TX.rogueData.time}` 
-         : `${TX.newSlot.day} ${TX.newSlot.date} @ ${TX.newSlot.time}`;
+         ? `${formatDate(TX.rogueData.date)} @ ${TX.rogueData.time}` 
+         : `${TX.newSlot.day} ${formatDate(TX.newSlot.date)} @ ${TX.newSlot.time}`;
     } else {
-       timeInfo = `${TX.originalAppt['Date']} @ ${TX.originalAppt['Time']} ${TX.originalAppt['AM or PM'] || ''}`;
+       timeInfo = `${formatDate(TX.originalAppt['Date'])} @ ${TX.originalAppt['Time']} ${TX.originalAppt['AM or PM'] || ''}`;
     }
     
+    // 🔹 FIX 2.1.b / 2.3.3: Correct Name Display
+    const cFirst = get(TX.owner, 'firstName', 'First Name');
+    const cLast  = get(TX.owner, 'lastName', 'Last Name');
+    const pName  = get(TX.pet, 'name', 'Pet Name');
+
     container.querySelector('#summaryText').innerHTML = `
-       <div style="font-size:1.1rem; font-weight:700; margin-bottom:4px;">${type}</div>
-       <div>${timeInfo}</div>
-       <div style="opacity:0.8;">${TX.owner.firstName} ${TX.owner.lastName} — ${TX.pet.name}</div>
+       <div style="font-size:1.1rem; font-weight:700; margin-bottom:4px; line-height:1.2;">${type}</div>
+       <div style="margin-bottom:4px;">${timeInfo}</div>
+       <div style="opacity:0.8;">${cFirst} ${cLast} — ${pName}</div>
     `;
 
     // 2. Hydrate Checkboxes (Data from Original Master Appt)

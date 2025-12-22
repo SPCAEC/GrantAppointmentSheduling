@@ -696,18 +696,37 @@
       if(hasRec) {
           const highlight = (id) => modal.querySelectorAll('.recordBtn').forEach(b => { if(b.id===id) {b.classList.add('selected'); b.classList.remove('secondary');} else {b.classList.add('secondary'); b.classList.remove('selected');} });
           modal.querySelector('#uploadBtn').onclick = () => {
-              highlight('uploadBtn');
-              const input = modal.querySelector('#recordsUpload'); input.click();
+              // highlight('uploadBtn'); // Optional: keep or remove
+              const input = modal.querySelector('#recordsUpload'); 
+              input.click();
+              
               input.onchange = () => {
-                 const files = [...input.files]; if(!files.length) return;
+                 const files = [...input.files]; 
+                 if(!files.length) return;
+                 
+                 // 🔹 FIX 1.2.a: Feedback
+                 const btn = modal.querySelector('#uploadBtn');
+                 const originalText = btn.textContent;
+                 btn.textContent = 'Uploading...';
+                 btn.disabled = true;
+
                  google.script.run.withSuccessHandler(res => {
-                    if(!res.ok) return toast('Folder error','error');
+                    if(!res.ok) { 
+                        toast('Folder error','error'); 
+                        btn.textContent = originalText; btn.disabled = false;
+                        return; 
+                    }
                     let done=0;
                     files.forEach(f => {
                        const reader = new FileReader();
                        reader.onload = e => {
                           google.script.run.withSuccessHandler(() => {
-                             done++; if(done===files.length) { toast('Uploaded!','success'); setTimeout(() => { modal.remove(); doBook(transport); }, 1000); }
+                             done++; 
+                             if(done===files.length) { 
+                                toast('Uploaded!','success'); 
+                                btn.textContent = 'Done';
+                                setTimeout(() => { modal.remove(); doBook(transport); }, 1000); 
+                             }
                           }).apiUploadVetRecord(f.name, e.target.result.split(',')[1], res.folderId);
                        };
                        reader.readAsDataURL(f);
@@ -804,12 +823,11 @@
        const currentOwner = TX.owner;
        container.querySelector('#btnBookNext').onclick = () => renderScheduleFlow(container, currentOwner);
        
-       // 🔹 FIX: Reliable Return Home
+       // 🔹 FIX 1.1.b: Aggressive Reload
        container.querySelector('#btnReturnHome').onclick = () => {
-          container.innerHTML = '<div class="spinner"></div><p style="text-align:center">Reloading...</p>';
-          google.script.run.withSuccessHandler(url => {
-             window.top.location.href = url;
-          }).getScriptUrl(); // You must add getScriptUrl() to rpc.gs or use google.script.host
+          container.innerHTML = '<div class="spinner"></div><p style="text-align:center; margin-top:1rem;">Refreshing...</p>';
+          // This forces the top-level window to reload its current URL
+          window.top.location.href = window.top.location.href;
        };
     }
   };
