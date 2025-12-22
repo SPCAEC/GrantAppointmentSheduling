@@ -378,6 +378,7 @@ function apiUpdateAppointment(appointmentId, payload, updatedBy, transportNeeded
   });
 }
 
+// 🔹 FIX: Completely rewritten to respect statusFilter array correctly
 function apiSearchAppointments(query, includePast = false, statusFilter = null) {
   return apiResponse_(() => {
     const { date, client, pet } = query || {};
@@ -397,6 +398,7 @@ function apiSearchAppointments(query, includePast = false, statusFilter = null) 
         if (parts.length === 3) rowDate = new Date(+parts[2], +parts[0] - 1, +parts[1]);
       }
 
+      // If no date, it's invalid
       if (!rowDate || isNaN(rowDate.getTime())) return acc;
 
       const rowDateStr = Utilities.formatDate(rowDate, tz, 'yyyy-MM-dd');
@@ -404,16 +406,17 @@ function apiSearchAppointments(query, includePast = false, statusFilter = null) 
       
       const status = String(r[CFG.COLS.STATUS] || '').trim();
 
-      // 🔹 STATUS FILTER LOGIC
-      if (statusFilter && Array.isArray(statusFilter)) {
-          // If specific statuses requested (e.g., ['Scheduled', 'Reserved'])
+      // 🔹 STATUS FILTER LOGIC (FIXED)
+      // If a filter is provided, the status MUST be in that list.
+      // If NO filter is provided, we default to 'Scheduled' only.
+      if (statusFilter && Array.isArray(statusFilter) && statusFilter.length > 0) {
           if (!statusFilter.includes(status)) return acc;
       } else {
-          // Default behavior: STRICTLY 'Scheduled' (unless overriden)
           if (status !== 'Scheduled') return acc;
       }
 
-      if (!includePast && rowDateMidnight.getTime() <= todayMidnight.getTime()) return acc;
+      // Date Logic: If includePast is false, filter out past dates.
+      if (!includePast && rowDateMidnight.getTime() < todayMidnight.getTime()) return acc;
 
       const dateDisplay = Utilities.formatDate(rowDate, tz, 'MM/dd/yyyy');
       acc.push({
@@ -421,7 +424,7 @@ function apiSearchAppointments(query, includePast = false, statusFilter = null) 
         date: dateDisplay, 
         time: `${r[CFG.COLS.TIME] || ''} ${r[CFG.COLS.AMPM] || ''}`.trim(),
         status: status,
-        type: String(r[CFG.COLS.TYPE] || ''), // 🔹 ADDED TYPE
+        type: String(r[CFG.COLS.TYPE] || ''), 
         firstName: String(r[CFG.COLS.FIRST] || ''),
         lastName: String(r[CFG.COLS.LAST] || ''),
         petName: String(r[CFG.COLS.PET_NAME] || ''),
@@ -433,6 +436,94 @@ function apiSearchAppointments(query, includePast = false, statusFilter = null) 
     }, []);
 
     return { rows };
+  });
+}
+
+// 🔹 ADD: Missing Rogue Appointment Function
+function apiCreateRogueAppointment(payload) {
+  return apiResponse_(() => {
+    if (!CFG || !CFG.SHEET_ID) throw new Error('Configuration (CFG) not found.');
+    if (!payload || typeof payload !== 'object') throw new Error('Invalid payload');
+
+    const cleanPayload = normalizePayload_(payload);
+
+    // 1. Explicit Mapping
+    const mapField = (frontendKey, configKey) => {
+      if (cleanPayload[frontendKey] !== undefined) {
+        cleanPayload[configKey] = cleanPayload[frontendKey];
+      }
+    };
+
+    mapField('Owner ID', CFG.COLS.OWNER_ID); mapField('ownerId',  CFG.COLS.OWNER_ID);
+    mapField('Pet ID', CFG.COLS.PET_ID);     mapField('petId',  CFG.COLS.PET_ID);
+    mapField('First Name', CFG.COLS.FIRST);  mapField('Last Name',  CFG.COLS.LAST);
+    mapField('Phone', CFG.COLS.PHONE);       mapField('Phone Number', CFG.COLS.PHONE);
+    mapField('Email', CFG.COLS.EMAIL);       mapField('City', CFG.COLS.CITY);
+    mapField('State', CFG.COLS.STATE);       mapField('Zip Code', CFG.COLS.ZIP);
+    
+    if (cleanPayload['Street Address']) cleanPayload[CFG.COLS.ADDRESS] = cleanPayload['Street Address'];
+    else if (cleanPayload['Address']) cleanPayload[CFG.COLS.ADDRESS] = cleanPayload['Address'];
+
+    mapField('Pet Name', CFG.COLS.PET_NAME); mapField('Species', CFG.COLS.SPECIES);
+    mapField('Breed One', CFG.COLS.BREED_ONE); mapField('Breed Two', CFG.COLS.BREED_TWO);
+    mapField('Color', CFG.COLS.COLOR); mapField('Color Pattern', CFG.COLS.COLOR_PATTERN);
+    mapField('Sex', 'Sex'); mapField('Spayed or Neutered', 'Spayed or Neutered');
+    mapField('Age', 'Age'); mapField('Weight', 'Weight');
+
+    mapField('Notes', 'Notes');
+    mapField('Vet Office Name', CFG.COLS.VET_OFFICE);
+    mapField('Allergies or Sensitivities', 'Allergies or Sensitivities');
+    mapField('Vaccines Needed', CFG.COLS.VACCINES);
+    mapField('Additional Services', CFG.COLS.ADDITIONAL_SERVICES);
+    mapField('Previous Vet Records', CFG.COLS.PREV_RECORDS);
+    mapField('Transportation Needed', CFG.COLS.TRANSPORT_NEEDED);
+    mapField('Reschedule', 'Reschedule');
+
+    // 2. Grant Logic
+    const zip = String(cleanPayload[CFG.COLS.ZIP] || '').trim();
+    let grant = 'Incubator Extended'; 
+    if (zip.includes('14215') || zip.includes('14211')) grant = 'PFL';
+    else if (zip.includes('14208')) grant = 'Incubator';
+    cleanPayload[CFG.COLS.GRANT] = grant;
+
+    // 3. Prepare Rogue Fields
+    const newId = getNextAppointmentId_();
+    
+    let dayOfWeek = '';
+    const dStr = cleanPayload[CFG.COLS.DATE] || payload['Date'];
+    if (dStr) {
+      const parts = dStr.split('/');
+      if (parts.length === 3) {
+        const d = new Date(+parts[2], +parts[0] - 1, +parts[1]); 
+        dayOfWeek = Utilities.formatDate(d, Session.getScriptTimeZone(), 'EEEE');
+      }
+    }
+
+    cleanPayload[CFG.COLS.ID] = newId;
+    cleanPayload[CFG.COLS.STATUS] = 'Scheduled';
+    cleanPayload[CFG.COLS.NEEDS_SCHED] = 'No';
+    cleanPayload[CFG.COLS.DAY] = dayOfWeek;
+    
+    // Ensure Date/Time are mapped
+    if (!cleanPayload[CFG.COLS.DATE]) cleanPayload[CFG.COLS.DATE] = payload['Date'];
+    if (!cleanPayload[CFG.COLS.TIME]) cleanPayload[CFG.COLS.TIME] = payload['Time'];
+    if (!cleanPayload[CFG.COLS.AMPM]) cleanPayload[CFG.COLS.AMPM] = payload['AM or PM'];
+    if (!cleanPayload[CFG.COLS.TYPE]) cleanPayload[CFG.COLS.TYPE] = payload['Appointment Type'];
+    
+    if (CFG.COLS.SCHEDULED_BY) cleanPayload[CFG.COLS.SCHEDULED_BY] = payload['Scheduled By'] || '';
+    cleanPayload[CFG.COLS.CREATED_AT] = new Date();
+
+    // 4. Write
+    appendNewAppointment_(cleanPayload);
+    
+    // 5. Update Owner Transportation in Central DB
+    if (cleanPayload[CFG.COLS.OWNER_ID] && cleanPayload[CFG.COLS.TRANSPORT_NEEDED]) {
+       try {
+         updateOwnerTransport_(cleanPayload[CFG.COLS.OWNER_ID], cleanPayload[CFG.COLS.TRANSPORT_NEEDED]);
+       } catch(e) { console.warn('Failed to sync transport to owner DB', e); }
+    }
+
+    return { id: newId };
   });
 }
 
