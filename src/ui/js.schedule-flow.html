@@ -568,29 +568,38 @@
     // Step 6: Pet Form
     function populatePetForm(p) {
       const ids = ['petId','pName','pSpecies','pBreed1','pBreed2','pColor','pPattern','pSex','pFixed','pAgeY','pAgeM','pWeight'];
-      ids.forEach(id => { const el = container.querySelector('#'+id); if(el) el.value = ''; });
+      ids.forEach(id => { const el = container.querySelector('#'+id); if (el) el.value = ''; });
 
-      if(p.petId) container.querySelector('#petId').value = p.petId;
-      if(p.name) container.querySelector('#pName').value = p.name;
-      if(p.species) container.querySelector('#pSpecies').value = p.species;
-      if(p.breed) container.querySelector('#pBreed1').value = p.breed;
-      if(p.breed2) container.querySelector('#pBreed2').value = p.breed2; 
-      if(p.color) container.querySelector('#pColor').value = p.color;
-      if(p.pattern) container.querySelector('#pPattern').value = p.pattern;
-      if(p.sex) container.querySelector('#pSex').value = p.sex;
-      if(p.fixed) container.querySelector('#pFixed').value = p.fixed;
+      if (p?.petId) container.querySelector('#petId').value = p.petId;
+      if (p?.name) container.querySelector('#pName').value = p.name;
+      if (p?.species) container.querySelector('#pSpecies').value = p.species;
+      if (p?.breed) container.querySelector('#pBreed1').value = p.breed;
+      if (p?.breed2) container.querySelector('#pBreed2').value = p.breed2;
+      if (p?.color) container.querySelector('#pColor').value = p.color;
+      if (p?.pattern) container.querySelector('#pPattern').value = p.pattern;
+      if (p?.sex) container.querySelector('#pSex').value = p.sex;
+      if (p?.fixed) container.querySelector('#pFixed').value = p.fixed;
 
-      // 🔹 UPDATED: Parse Age & Weight
-      if (p.age) {
-        const matches = p.age.match(/\d+/g);
-        if (matches) {
-            if (matches.length > 0) container.querySelector('#pAgeY').value = matches[0];
-            if (matches.length > 1) container.querySelector('#pAgeM').value = matches[1];
-        } else {
-            container.querySelector('#pAgeY').value = p.age.replace(/\D/g, '');
-        }
+      // Age: prefer server-provided split values (best), otherwise parse safely from p.age
+      const setAge = (y, m) => {
+        const yEl = container.querySelector('#pAgeY');
+        const mEl = container.querySelector('#pAgeM');
+        if (yEl) yEl.value = (y === 0 || y) ? String(y).replace(/\D/g, '') : '';
+        if (mEl) mEl.value = (m === 0 || m) ? String(m).replace(/\D/g, '') : '';
+      };
+
+      if (p?.ageY !== undefined || p?.ageM !== undefined) {
+        setAge(p.ageY, p.ageM);
+      } else if (p?.age != null && p.age !== '') {
+        const ageStr = String(p.age); // <- critical: guarantees .match exists
+        const matches = ageStr.match(/\d+/g) || [];
+        setAge(matches[0] || '', matches[1] || '');
+      } else {
+        setAge('', '');
       }
-      if (p.weight) {
+
+      // Weight: safe normalization
+      if (p?.weight != null && p.weight !== '') {
         container.querySelector('#pWeight').value = String(p.weight).replace(/[^\d.]/g, '');
       }
     }

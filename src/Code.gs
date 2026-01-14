@@ -51,3 +51,11 @@ function include(filename) {
     return `<!-- include error: ${filename} (${err.message || err}) -->`;
   }
 }
+
+function forceReauth_send() {
+  GmailApp.sendEmail(
+    'yourspcaoutreachteam@gmail.com',
+    'Pet Helper Pro OAuth Test',
+    'If you received this, Gmail send permission is working.'
+  );
+}

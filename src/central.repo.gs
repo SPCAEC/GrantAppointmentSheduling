@@ -104,9 +104,6 @@ function findOwnersInDb_(query) {
 /**
  * Get Active Pets for an Owner
  */
-/**
- * Get Active Pets for an Owner
- */
 function getPetsByOwnerId_(ownerId) {
   const ss = getCentralSs_();
   const sh = ss.getSheetByName(CFG.TABS.PETS);
@@ -116,38 +113,57 @@ function getPetsByOwnerId_(ownerId) {
   headers.forEach((h, i) => hMap[h] = i);
 
   const idxOwnerId = hMap['owner id'];
-  const results = [];
-  
   if (idxOwnerId === undefined) return [];
 
-  // 🔹 FIX: Robust matching
   const targetId = String(ownerId).toLowerCase().trim();
+  const results = [];
 
-  data.forEach((row, i) => {
+  const getValFromRow_ = (row, key) => {
+    const k = hMap[key];
+    return (k !== undefined) ? row[k] : '';
+  };
+
+  const parseAgeParts_ = (ageVal) => {
+    const ageStr = (ageVal == null) ? '' : String(ageVal);
+    const nums = ageStr.match(/\d+/g) || [];
+    return {
+      ageStr,
+      ageY: nums[0] || '',
+      ageM: nums[1] || ''
+    };
+  };
+
+  data.forEach((row) => {
     const rowOwnerId = String(row[idxOwnerId] || '').toLowerCase().trim();
-    if (rowOwnerId === targetId) {
-      // ... (Rest of mapping logic remains the same, just robust ID check)
-      const getVal = (key) => {
-        const k = hMap[key];
-        return (k !== undefined) ? row[k] : '';
-      };
-      
-      results.push({
-        petId: getVal('pet id'),
-        ownerId: rowOwnerId,
-        name: getVal('pet name'),
-        species: getVal('species'),
-        breed: getVal('primary breed') || getVal('breed one'),
-        breed2: getVal('secondary breed') || getVal('breed two'),
-        color: getVal('color'),
-        pattern: getVal('color pattern') || getVal('pattern'),
-        sex: getVal('sex'),
-        fixed: getVal('spayed or neutered') || getVal('fixed') || getVal('altered'),
-        age: getVal('age'),
-        weight: getVal('weight') || getVal('approx weight')
-      });
-    }
+    if (rowOwnerId !== targetId) return;
+
+    const rawAge = getValFromRow_(row, 'age');
+    const ageParts = parseAgeParts_(rawAge);
+
+    const rawWeight = getValFromRow_(row, 'weight') || getValFromRow_(row, 'approx weight');
+    const weightStr = (rawWeight == null) ? '' : String(rawWeight);
+
+    results.push({
+      petId: getValFromRow_(row, 'pet id'),
+      ownerId: rowOwnerId,
+      name: getValFromRow_(row, 'pet name'),
+      species: getValFromRow_(row, 'species'),
+      breed: getValFromRow_(row, 'primary breed') || getValFromRow_(row, 'breed one'),
+      breed2: getValFromRow_(row, 'secondary breed') || getValFromRow_(row, 'breed two'),
+      color: getValFromRow_(row, 'color'),
+      pattern: getValFromRow_(row, 'color pattern') || getValFromRow_(row, 'pattern'),
+      sex: getValFromRow_(row, 'sex'),
+      fixed: getValFromRow_(row, 'spayed or neutered') || getValFromRow_(row, 'fixed') || getValFromRow_(row, 'altered'),
+
+      // Keep original string, but also provide split numeric fields for edit form
+      age: ageParts.ageStr,
+      ageY: ageParts.ageY,
+      ageM: ageParts.ageM,
+
+      weight: weightStr
+    });
   });
+
   return results;
 }
 

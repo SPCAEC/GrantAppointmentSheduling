@@ -1,88 +1,91 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  const { $$, backBtn, header, sectionTitle, mainMenu, views, clearClientCache } = window.SPCA;
+  const SPCA = window.SPCA || {};
+  const { $$, backBtn, header, sectionTitle, mainMenu, views, clearClientCache } = SPCA;
 
-  // ─── Custom Back Handler Logic ───
-  // This allows specific flows (Schedule/Modify) to override the back button
-  // behavior (e.g. go to previous step) instead of exiting to the main menu.
   let customBackAction = null;
 
-  window.SPCA.setBackHandler = (fn) => {
+  SPCA.setBackHandler = (fn) => {
     customBackAction = fn;
   };
 
-  // ─── Tile navigation ───────────────────────────
+  // Tile navigation
   $$('.tile').forEach(btn => {
     btn.addEventListener('click', () => openView(btn.dataset.view));
   });
 
-  // ─── Back button: return to main menu OR custom step ──────────
+  // Back button
   backBtn.addEventListener('click', () => {
-    // 1. If a flow has set a custom back action, run it
     if (typeof customBackAction === 'function') {
       customBackAction();
       return;
     }
 
-    // 2. Default: Return to Main Menu
-    clearClientCache();
+    // Default: Return to Main Menu
+    if (typeof clearClientCache === 'function') clearClientCache();
     header.classList.add('hidden');
-    sectionTitle.textContent = '';
-    views.forEach(v => v.classList.add('hidden'));
+    sectionTitle.textContent = 'Grant Appointment Scheduling';
+
+    views.forEach(v => {
+      v.classList.add('hidden');
+      // Optional: clear view content when leaving a flow
+      v.innerHTML = '';
+    });
+
     mainMenu.classList.remove('hidden');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
-  // ─── View switching logic ──────────────────────
   function openView(view) {
-    // Reset handler when entering a new top-level view
     customBackAction = null;
 
     mainMenu.classList.add('hidden');
     header.classList.remove('hidden');
     sectionTitle.textContent = viewTitle(view);
+
     views.forEach(v => v.classList.add('hidden'));
 
     const target = document.querySelector(`#view-${view}`);
+    if (!target) {
+      console.error(`Missing container: #view-${view}`);
+      return;
+    }
+
+    // Always clear the target before rendering to avoid "coming soon" / stale UI
+    target.innerHTML = '';
     target.classList.remove('hidden');
 
-    // 1. Handle "Schedule" and "Modify" (Explicit Identity Check Wrapper)
-    if ((view === 'schedule' || view === 'modify') && typeof showWhoAreYouScreen === 'function') {
-      showWhoAreYouScreen(target, () => {
-        if (view === 'schedule' && typeof renderScheduleFlow === 'function') {
-          renderScheduleFlow(target);
-        } else if (view === 'modify' && typeof renderModifyFlow === 'function') {
-          renderModifyFlow(target);
-        }
-      });
-    } 
-    // 2. Fallback for Schedule/Modify if identity check fails/missing
-    else if (view === 'schedule' && typeof renderScheduleFlow === 'function') {
-      renderScheduleFlow(target);
-    } 
-    else if (view === 'modify' && typeof renderModifyFlow === 'function') {
-      renderModifyFlow(target);
-    } 
-    // 3. Handle "Cancel" (Has its own internal Identity Check)
-    else if (view === 'cancel' && typeof renderCancelFlow === 'function') {
-       renderCancelFlow(target);
+    // Call the renderer. Each flow handles its own identity check if needed.
+    if (view === 'schedule' && typeof window.renderScheduleFlow === 'function') {
+      window.renderScheduleFlow(target);
+      return;
     }
-    else if (view === 'outcome' && typeof renderOutcomeFlow === 'function') {
-       renderOutcomeFlow(target);
+    if (view === 'modify' && typeof window.renderModifyFlow === 'function') {
+      window.renderModifyFlow(target);
+      return;
     }
+    if (view === 'cancel' && typeof window.renderCancelFlow === 'function') {
+      window.renderCancelFlow(target);
+      return;
+    }
+    if (view === 'outcome' && typeof window.renderOutcomeFlow === 'function') {
+      window.renderOutcomeFlow(target);
+      return;
+    }
+
+    // Fallback if a renderer is missing
+    target.innerHTML = `<p class="error">This flow is not available (missing renderer).</p>`;
   }
 
-  // ─── Section title resolver ─────────────────────
   function viewTitle(view) {
     return {
       schedule: 'Schedule New Appointment',
       modify:   'Modify Existing Appointment',
       cancel:   'Cancel Appointment',
       outcome:  'Log Appointment Outcome'
-    }[view] || '';
+    }[view] || 'Grant Appointment Scheduling';
   }
 
-  // Expose globally
   window.openView = openView;
 });
 </script>

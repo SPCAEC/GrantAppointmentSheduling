@@ -181,8 +181,8 @@ function apiBookAppointment(payload, type, date, time, appointmentId, schedulerN
 
     if (rowIndex < 2) throw new Error(`Appointment slot not found: ${appointmentId}`);
     
-    cleanPayload[CFG.COLS.STATUS] = 'Scheduled'; // Ensure standard bookings are 'Scheduled'
-    cleanPayload[CFG.COLS.NEEDS_SCHED] = 'No'; // Since it is now scheduled
+    cleanPayload[CFG.COLS.STATUS] = 'Reserved'; // Ensure standard bookings are 'Reserved'
+    cleanPayload[CFG.COLS.NEEDS_SCHED] = 'Yes'; // Since it is now ready to be sent.
     if (CFG.COLS.SCHEDULED_BY) cleanPayload[CFG.COLS.SCHEDULED_BY] = schedulerName || '';
 
     updateAppointmentRow_(rowIndex, cleanPayload);
@@ -500,8 +500,8 @@ function apiCreateRogueAppointment(payload) {
     }
 
     cleanPayload[CFG.COLS.ID] = newId;
-    cleanPayload[CFG.COLS.STATUS] = 'Scheduled';
-    cleanPayload[CFG.COLS.NEEDS_SCHED] = 'No';
+    cleanPayload[CFG.COLS.STATUS] = 'Reserved';
+    cleanPayload[CFG.COLS.NEEDS_SCHED] = 'Yes';
     cleanPayload[CFG.COLS.DAY] = dayOfWeek;
     
     // Ensure Date/Time are mapped
@@ -530,17 +530,38 @@ function apiCreateRogueAppointment(payload) {
 function apiCancelAppointment(appointmentId, reason, cancelledBy) {
   return apiResponse_(() => {
     if (!appointmentId) throw new Error('Missing ID');
-    const all = readAllAppointments_();
-    const idx = all.findIndex(r => String(r[CFG.COLS.ID] || '').trim() === String(appointmentId).trim());
-    if (idx < 0) throw new Error('Not found');
-    
-    const rowDate = all[idx][CFG.COLS.DATE];
-    const dateStr = (rowDate instanceof Date) ? Utilities.formatDate(rowDate, Session.getScriptTimeZone(), 'MM/dd/yyyy') : String(rowDate);
-    
-    // Optional: Allow cancelling past appointments for cleanup
-    // if (!isFutureDate_(dateStr)) throw new Error('Cannot cancel past appointment');
 
-    // Clear Fields
+    const all = readAllAppointments_();
+    const targetId = String(appointmentId).trim();
+
+    const idx = all.findIndex(r => String(r[CFG.COLS.ID] || '').trim() === targetId);
+    if (idx < 0) throw new Error('Not found');
+
+    const row = all[idx];
+
+    // ---- Pull details BEFORE clearing anything ----
+    const rowDate = row[CFG.COLS.DATE];
+    const dateStr = (rowDate instanceof Date)
+      ? Utilities.formatDate(rowDate, Session.getScriptTimeZone(), 'MM/dd/yyyy')
+      : String(rowDate || '').trim();
+
+    const typeStr = String(row[CFG.COLS.TYPE] || '').trim();
+
+    const rowTime = row[CFG.COLS.TIME];
+    const timeStr = (rowTime instanceof Date)
+      ? Utilities.formatDate(rowTime, Session.getScriptTimeZone(), 'h:mm')
+      : String(rowTime || '').trim();
+
+    const ampmStr = String(row[CFG.COLS.AMPM] || '').trim();
+
+    // Send email to Lipsey BEFORE clearing the appointment slot
+    sendCancelEmail_({
+      date: dateStr,
+      type: typeStr,
+      time: `${timeStr}${ampmStr ? ' ' + ampmStr : ''}`.trim()
+    });
+
+    // ---- Existing logic: clear fields + mark Available ----
     const clearFields = {
       [CFG.COLS.FIRST]: '', [CFG.COLS.LAST]: '', [CFG.COLS.EMAIL]: '', [CFG.COLS.PHONE]: '',
       [CFG.COLS.ADDRESS]: '', [CFG.COLS.CITY]: '', [CFG.COLS.STATE]: '', [CFG.COLS.ZIP]: '',
@@ -548,7 +569,7 @@ function apiCancelAppointment(appointmentId, reason, cancelledBy) {
       [CFG.COLS.BREED_ONE]: '', [CFG.COLS.BREED_TWO]: '', [CFG.COLS.COLOR]: '', [CFG.COLS.COLOR_PATTERN]: '',
       [CFG.COLS.VACCINES]: '', [CFG.COLS.ADDITIONAL_SERVICES]: '', [CFG.COLS.PREV_RECORDS]: '',
       [CFG.COLS.VET_OFFICE]: '', [CFG.COLS.SCHEDULED_BY]: '',
-      [CFG.COLS.OWNER_ID]: '', [CFG.COLS.PET_ID]: '', 
+      [CFG.COLS.OWNER_ID]: '', [CFG.COLS.PET_ID]: '',
       'Sex': '', 'Spayed or Neutered': '', 'Age': '', 'Weight': '', 'Allergies or Sensitivities': '', 'Notes': ''
     };
 
