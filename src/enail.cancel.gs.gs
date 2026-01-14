@@ -11,7 +11,6 @@ function sendCancelEmail_(appt) {
   }
 
   const subject = 'Grant Appointment Cancellation';
-
   const body =
 `Hello Lipsey team,
 
@@ -20,17 +19,18 @@ This is an automated email from your friendly Pet Helper Pro. The following appo
 Reply ALL with questions!
 
 Appointment Details
+Client: ${String(appt.client || '').trim()}
 Date: ${appt.date}
 Appointment Type: ${appt.type}
 Time: ${appt.time}
 `;
 
-  const to = recipients[0];
-  const cc = recipients.slice(1).join(',');
-
-  GmailApp.sendEmail(to, subject, body, {
-    cc: cc || undefined,
-    name: 'Pet Helper Pro',
-    replyTo: 'yourspcaoutreachteam@gmail.com'
+  MailApp.sendEmail({
+    to: recipients[0],
+    cc: recipients.slice(1).join(','),
+    subject,
+    body,
+    replyTo: 'yourspcaoutreachteam@gmail.com',
+    name: 'Pet Helper Pro'
   });
 }

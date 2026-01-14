@@ -527,9 +527,12 @@ function apiCreateRogueAppointment(payload) {
   });
 }
 
-function apiCancelAppointment(appointmentId, reason, cancelledBy) {
+function apiCancelAppointment(appointmentId, reason, cancelledBy, options) {
   return apiResponse_(() => {
     if (!appointmentId) throw new Error('Missing ID');
+
+    const opts = options || {};
+    const suppressClinicEmail = opts.suppressClinicEmail === true;
 
     const all = readAllAppointments_();
     const targetId = String(appointmentId).trim();
@@ -540,6 +543,9 @@ function apiCancelAppointment(appointmentId, reason, cancelledBy) {
     const row = all[idx];
 
     // ---- Pull details BEFORE clearing anything ----
+    const first = String(row[CFG.COLS.FIRST] || '').trim();
+    const last  = String(row[CFG.COLS.LAST] || '').trim();
+    const clientStr = `${first} ${last}`.trim();
     const rowDate = row[CFG.COLS.DATE];
     const dateStr = (rowDate instanceof Date)
       ? Utilities.formatDate(rowDate, Session.getScriptTimeZone(), 'MM/dd/yyyy')
@@ -554,12 +560,20 @@ function apiCancelAppointment(appointmentId, reason, cancelledBy) {
 
     const ampmStr = String(row[CFG.COLS.AMPM] || '').trim();
 
-    // Send email to Lipsey BEFORE clearing the appointment slot
-    sendCancelEmail_({
-      date: dateStr,
-      type: typeStr,
-      time: `${timeStr}${ampmStr ? ' ' + ampmStr : ''}`.trim()
-    });
+    // ✅ Send cancel email only if not suppressed (i.e., true cancel)
+    if (!suppressClinicEmail) {
+      try {
+        sendCancelEmail_({
+          client: clientStr,
+          date: dateStr,
+          type: typeStr,
+          time: `${timeStr}${ampmStr ? ' ' + ampmStr : ''}`.trim()
+        });
+      } catch (e) {
+        // Don’t block cancellation if email fails
+        console.error('Cancel email failed (non-blocking):', e);
+      }
+    }
 
     // ---- Existing logic: clear fields + mark Available ----
     const clearFields = {
@@ -813,8 +827,14 @@ function apiGetModifyContext(apptId) {
 
 function apiRescheduleAppointment(oldApptId, newSlotId, newType, payload, scheduler, isRogue, rogueData) {
   return apiResponse_(() => {
-    // A. Cancel old
-    const cancelRes = apiCancelAppointment(oldApptId, "Rescheduled to new slot", scheduler);
+    // A. Cancel old (suppress clinic cancellation email because this is a reschedule)
+    const cancelRes = apiCancelAppointment(
+      oldApptId,
+      "Rescheduled to new slot",
+      scheduler,
+      { suppressClinicEmail: true }
+    );
+
     if (!cancelRes.ok) throw new Error(cancelRes.error);
 
     payload['Reschedule'] = 'Yes';
